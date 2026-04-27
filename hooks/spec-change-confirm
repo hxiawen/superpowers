@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: allow explicit user confirmation for spec/spec-test edits
+
+set -euo pipefail
+
+INPUT="$(cat || true)"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+STATUS_FILE="$PROJECT_DIR/.claude/.spec-change-status"
+if [ ! -f "$STATUS_FILE" ]; then
+  exit 0
+fi
+
+# Supported explicit confirmation phrase: "confirm spec change"
+if printf '%s' "$PROMPT" | rg -qi "confirm[[:space:]]+spec[[:space:]]+change|确认[[:space:]]*spec[[:space:]]*修改|确认[[:space:]]*规范[[:space:]]*修改|批准[[:space:]]*spec[[:space:]]*变更"; then
+  printf 'confirmed\n' > "$STATUS_FILE"
+fi
+
+exit 0

@@ -48,7 +48,7 @@ digraph process {
         "Dispatch implementer subagent (./implementer-prompt.md)" [shape=box];
         "Implementer subagent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
-        "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
+        "Implementer subagent implements, tests, records RED/GREEN evidence, commits, self-reviews" [shape=box];
         "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [shape=box];
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
@@ -58,17 +58,19 @@ digraph process {
         "Mark task complete in TodoWrite" [shape=box];
     }
 
+    "Invoke using-git-worktrees (infra setup)" [shape=box];
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
     "More tasks remain?" [shape=diamond];
     "Dispatch final code reviewer subagent for entire implementation" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
+    "Invoke using-git-worktrees (infra setup)" -> "Read plan, extract all tasks with full text, note context, create TodoWrite";
     "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
-    "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
+    "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, records RED/GREEN evidence, commits, self-reviews" [label="no"];
+    "Implementer subagent implements, tests, records RED/GREEN evidence, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
     "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer subagent confirms code matches spec?";
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
     "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
@@ -83,6 +85,18 @@ digraph process {
     "Dispatch final code reviewer subagent for entire implementation" -> "Use superpowers:finishing-a-development-branch";
 }
 ```
+
+Stage note: this skill is Stage 5 (Subagent Development). It MUST invoke `using-git-worktrees` at startup as infrastructure setup.
+
+## PR Loop Execution Mode (Mandatory)
+
+Execute tasks by active PR loop (`PR1..PRn`), not a single version-wide straight run:
+
+1. Select active PR from plan grouping (`Vx.y.z-PR1` first)
+2. Execute tasks mapped to that PR with normal implementer + reviewer loops
+3. When running the three environment acceptances, execute `autotest -> mocktest -> devicetest` in order and write status only to `Vx.y.z-test.md` under **`## Acceptance status (hooks)`** (not the PR tdd-log). If a run fails, debug and repeat until the version file reflects pass/fail in order.
+4. Advance to the next PR (`PR2`, ..., `PRn`) after review/checkpoints for the current PR, switching active PR context for PR-scoped files.
+5. After `PRn`, trigger version-level regression/aggregation before final branch completion while keeping active PR context on `PRn` where PR paths are needed.
 
 ## Model Selection
 
@@ -117,6 +131,57 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
+## Timeout and Degradation Policy (Mandatory)
+
+Subagent orchestration must fail-safe instead of waiting indefinitely.
+
+When an implementer/reviewer subagent stalls or times out:
+
+1. **First timeout:** retry once with tighter scope and explicit success criteria.
+2. **Second timeout:** either split task further or switch to a more suitable model.
+3. **Third timeout / repeated stall:** controller agent takes over directly (main-agent execution), and logs:
+   - timeout symptom
+   - retry history
+   - why takeover is safer than continued dispatch
+4. **Do not loop waiting** without a state change (new prompt scope/model/task split).
+
+Record degradation decisions in PR artifacts (at minimum `Vx.y.z-PRn-subagent-summary.md`) so review can audit why orchestration changed.
+
+## Evidence Gate Per Task
+
+Before marking a task complete, require all of the following:
+
+1. RED evidence: command + failing signal
+2. GREEN evidence: command + pass signal
+3. If code changed after GREEN, rerun verification and record latest result
+4. Completion statement formatted through `verification-before-completion` expectations
+
+If any evidence is missing, keep the task open.
+
+## PR Doc Pack Gate (Mandatory)
+
+For each active PR (`docs/Vx.y.z-<topic>/Vx.y.z-PRn/`), keep these files updated during execution:
+
+- `Vx.y.z-PRn-tdd-log.md`
+- `Vx.y.z-PRn-subagent-summary.md`
+- `Vx.y.z-PRn-review-report.md`
+- `Vx.y.z-PRn-finalize-log.md`
+
+Before dispatching the first implementer subagent for a PR, verify that the full four-file PR doc pack already exists. If any artifact is missing, scaffold it immediately with a minimal heading + status placeholder, then proceed. Do not wait until final handoff to create `subagent-summary`, `review-report`, or `finalize-log`.
+
+Migration rule: if legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` does not, rename the legacy file to `Vx.y.z-PRn-review-report.md` and continue with the unified artifact name.
+
+Ownership rule: `Vx.y.z-PRn-review-report.md` must contain reviewer conclusions (spec reviewer, code-quality reviewer, or code-reviewer). Implementer self-review belongs in `Vx.y.z-PRn-subagent-summary.md` and cannot be used as review approval evidence.
+
+Before final handoff, require:
+
+- `Vx.y.z-PRn-finalize-log.md`
+- `Vx.y.z-test.md` (version-level test summary)
+
+No task/phase is considered complete if PR doc pack is missing or stale.
+
+Across PR loops, `Vx.y.z-test.md` must be maintained continuously (not appended only at the last minute) — case matrices, EI, blind spots, etc. **Hook-visible** `autotest` / `mocktest` / `devicetest` **status lines** live only under **`## Acceptance status (hooks)`**; update that block when you execute the three (often when closing the version or as each layer completes, per your plan).
+
 ## Prompt Templates
 
 - `./implementer-prompt.md` - Dispatch implementer subagent
@@ -128,7 +193,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 ```
 You: I'm using Subagent-Driven Development to execute this plan.
 
-[Read plan file once: docs/superpowers/plans/feature-plan.md]
+[Read plan file once: docs/Vx.y.z-<topic>/Vx.y.z-plan.md]
 [Extract all 5 tasks with full text and context]
 [Create TodoWrite with all tasks]
 
@@ -246,6 +311,10 @@ Done!
 - Let implementer self-review replace actual review (both are needed)
 - **Start code quality review before spec compliance is ✅** (wrong order)
 - Move to next task while either review has open issues
+- Accept completion without fresh command evidence
+- Let TDD evidence stay implicit ("tests pass") without command/output trace
+- Finish work without updating PR doc pack files
+- Declare completion without `*-finalize-log.md`
 
 **If subagent asks questions:**
 - Answer clearly and completely
@@ -267,7 +336,8 @@ Done!
 **Required workflow skills:**
 - **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
 - **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:requesting-code-review** - Code review template for reviewer subagents
+- **superpowers:requesting-code-review** - Review-stage template used by reviewer subagents in this skill's loops
+- **superpowers:verification-before-completion** - REQUIRED before task completion claims
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents should use:**

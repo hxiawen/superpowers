@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: route Figma URL read / screenshot diff tasks through /figma-read.
+
+set -euo pipefail
+
+json_escape() {
+  local raw="${1:-}"
+  raw="${raw//\\/\\\\}"
+  raw="${raw//\"/\\\"}"
+  raw="${raw//$'\n'/\\n}"
+  raw="${raw//$'\r'/\\r}"
+  raw="${raw//$'\t'/\\t}"
+  printf '%s' "$raw"
+}
+
+inject_and_exit() {
+  local context="$1"
+  local escaped
+  escaped="$(json_escape "$context")"
+
+  if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+    printf '{"additional_context":"%s"}\n' "$escaped"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+    printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$escaped"
+  else
+    printf '{"additionalContext":"%s"}\n' "$escaped"
+  fi
+  exit 0
+}
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf '%s' "$raw"
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+PROMPT_LOWER="$(printf '%s' "$PROMPT" | tr '[:upper:]' '[:lower:]')"
+
+# Explicit command invocation already routes correctly.
+if printf '%s' "$PROMPT_LOWER" | rg -q '(^|[[:space:]])/figma-read([[:space:]]|$)'; then
+  exit 0
+fi
+
+# Figma Design/File URLs need the readiness flow immediately. This catches the
+# brainstorming intake case where the user only pastes the URL after selecting
+# "Figma Design Draft", before they mention screenshots or diff analysis.
+if ! printf '%s' "$PROMPT_LOWER" | rg -q 'https://www\.figma\.com/(design|file)/'; then
+  exit 0
+fi
+
+if printf '%s' "$PROMPT_LOWER" | rg -q '(^|[[:space:]])/codetofigma([[:space:]]|$)'; then
+  exit 0
+fi
+
+inject_and_exit "Figma Design/File URL detected. Before any design analysis, screenshot comparison, spec writing, or implementation, route this prompt through /figma-read: parse node-id, check figma-desktop MCP server health, verify current session exposes mcp__figma-desktop__get_metadata/get_screenshot/get_design_context, then read metadata, screenshot, and design context. If server is connected but session tools are missing, produce a restart handoff and ask the user to restart Claude Code."

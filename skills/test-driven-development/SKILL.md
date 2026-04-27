@@ -68,6 +68,21 @@ digraph tdd_cycle {
 }
 ```
 
+## Artifact Logging (Mandatory)
+
+TDD evidence must be written to the active PR log:
+
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-tdd-log.md`
+
+For every RED/GREEN cycle, record at minimum:
+
+- test case or behavior ID/name
+- RED command + key failing signal
+- GREEN command + key passing signal
+- latest verification result after any follow-up code change
+
+No TDD cycle is considered complete if evidence exists only in chat output and is not persisted to the PR tdd-log artifact.
+
 ### RED - Write Failing Test
 
 Write one minimal test showing what should happen.

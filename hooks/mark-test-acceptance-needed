@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# PostToolUse hook: mark acceptance test status as pending after code edits
+
+set -euo pipefail
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+INPUT="$(cat || true)"
+STATUS_DIR="$PROJECT_DIR/.claude"
+STATUS_FILE="$STATUS_DIR/.test-acceptance-status"
+SPEC_CHANGE_STATUS_FILE="$STATUS_DIR/.spec-change-status"
+mkdir -p "$STATUS_DIR"
+printf 'needs_acceptance\n' > "$STATUS_FILE"
+
+# Normalize tool-reported paths: relative -> under CLAUDE_PROJECT_DIR; keep absolute as-is.
+normalize_tool_path() {
+  local root="$1"
+  local raw="$2"
+  if [ -z "$raw" ]; then
+    printf ''
+    return 0
+  fi
+  local t="${raw#./}"
+  if [ "${t#/}" != "$t" ]; then
+    printf '%s' "$t"
+    return 0
+  fi
+  case "$root" in
+    */) printf '%s%s' "$root" "$t" ;;
+    *) printf '%s/%s' "$root" "$t" ;;
+  esac
+}
+
+# Version-level spec/test under docs/ (absolute or relative) + e2e-style *.spec.ts(x) / *.spec.js(x)
+SPEC_OR_ASSERTION_SOURCE_PATTERN='(^|/)docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[Vv][0-9]+\.[0-9]+\.[0-9]+-(spec|test)\.md$|(^|/)(test|tests|e2e)/.*\.spec\.(ts|tsx|js|jsx)$'
+
+if command -v jq >/dev/null 2>&1 && [ -n "$INPUT" ]; then
+  SPEC_CHANGED="false"
+  while IFS= read -r candidate_path; do
+    [ -z "$candidate_path" ] && continue
+    normalized="$(normalize_tool_path "$PROJECT_DIR" "$candidate_path")"
+    if [ -n "$normalized" ] && [ -e "$normalized" ] && command -v realpath >/dev/null 2>&1; then
+      rp="$(realpath "$normalized" 2>/dev/null || true)"
+      [ -n "$rp" ] && normalized="$rp"
+    fi
+    if printf '%s' "$normalized" | rg -qi "$SPEC_OR_ASSERTION_SOURCE_PATTERN"; then
+      SPEC_CHANGED="true"
+      break
+    fi
+  done < <(printf '%s' "$INPUT" | jq -r '.. | objects | .path? // .file_path? // .filePath? // empty' 2>/dev/null || true)
+
+  if [ "$SPEC_CHANGED" = "true" ]; then
+    printf 'needs_confirm\n' > "$SPEC_CHANGE_STATUS_FILE"
+  fi
+fi
+
+exit 0

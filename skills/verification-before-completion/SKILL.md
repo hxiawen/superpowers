@@ -37,6 +37,21 @@ BEFORE claiming any status or expressing satisfaction:
 Skip any step = lying, not verifying
 ```
 
+## Required Output Schema
+
+When claiming completion, include this block:
+
+```md
+## Verification Evidence
+- claim: <what is being claimed>
+- command: <full command run in this turn>
+- exit_code: <0/non-zero>
+- result_summary: <pass/fail counts or key lines>
+- artifacts: <updated files/report paths, if any>
+```
+
+If the command was not run in the current turn, the claim is invalid.
+
 ## Common Failures
 
 | Claim | Requires | Not Sufficient |
@@ -59,6 +74,7 @@ Skip any step = lying, not verifying
 - Thinking "just this once"
 - Tired and wanting work over
 - **ANY wording implying success without having run verification**
+- Missing `## Verification Evidence` block in completion message
 
 ## Rationalization Prevention
 

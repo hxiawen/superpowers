@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Test: active PR resolution priority in acceptance hooks
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$SCRIPT_DIR/../.."
+COMMON="$ROOT/hooks/acceptance-order-common"
+
+echo "=== Test: active PR resolution priority ==="
+echo ""
+
+if [ ! -f "$COMMON" ]; then
+    echo "[FAIL] Missing hook helper: $COMMON"
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+. "$COMMON"
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+PROJECT_DIR="$TMP_DIR/project"
+VERSION_DIR="$PROJECT_DIR/docs/V0.1.0-panel-ui"
+PR1_DIR="$VERSION_DIR/V0.1.0-PR1"
+PR2_DIR="$VERSION_DIR/V0.1.0-PR2"
+
+mkdir -p "$PR1_DIR" "$PR2_DIR" "$PROJECT_DIR/.claude"
+touch "$PR1_DIR/V0.1.0-PR1-tdd-log.md" "$PR2_DIR/V0.1.0-PR2-tdd-log.md"
+
+assert_path_eq() {
+    local got="$1"
+    local expected="$2"
+    local name="$3"
+    if [ "$got" = "$expected" ]; then
+        echo "  [PASS] $name"
+    else
+        echo "  [FAIL] $name"
+        echo "  expected: $expected"
+        echo "  got:      $got"
+        exit 1
+    fi
+}
+
+# 1) SUPERPOWERS_ACTIVE_PR_DIR has highest priority
+resolved="$(SUPERPOWERS_ACTIVE_PR_DIR="$PR1_DIR" resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "run autotest for pr2")"
+assert_path_eq "$resolved" "$PR1_DIR" "env SUPERPOWERS_ACTIVE_PR_DIR priority"
+
+# 2) SUPERPOWERS_ACTIVE_PR selects by basename
+resolved="$(SUPERPOWERS_ACTIVE_PR="V0.1.0-PR2" resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "")"
+assert_path_eq "$resolved" "$PR2_DIR" "env SUPERPOWERS_ACTIVE_PR basename"
+
+# 3) SUPERPOWERS_ACTIVE_PR_CONTEXT supports PRn shorthand
+resolved="$(SUPERPOWERS_ACTIVE_PR_CONTEXT="PR2" resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "")"
+assert_path_eq "$resolved" "$PR2_DIR" "env SUPERPOWERS_ACTIVE_PR_CONTEXT shorthand"
+
+# 4) .active-pr supports absolute path
+printf '%s\n' "$PR1_DIR" > "$PROJECT_DIR/.claude/.active-pr"
+resolved="$(resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "")"
+assert_path_eq "$resolved" "$PR1_DIR" ".active-pr absolute path marker"
+
+# 5) Prompt hint selects matching PR when no explicit context
+rm -f "$PROJECT_DIR/.claude/.active-pr"
+resolved="$(resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "please run devicetest for PR2")"
+assert_path_eq "$resolved" "$PR2_DIR" "prompt hint PR selection"
+
+# 6) Lowercase v* version root + PR dirs (case-sensitive FS safe)
+LO_ROOT="$TMP_DIR/lowercase-project"
+LO_VERSION="$LO_ROOT/docs/v0.2.0-topic"
+LO_PR="$LO_VERSION/v0.2.0-PR1"
+mkdir -p "$LO_PR" "$LO_ROOT/.claude"
+touch "$LO_PR/v0.2.0-PR1-tdd-log.md"
+resolved="$(resolve_latest_version_dir "$LO_ROOT")"
+assert_path_eq "$resolved" "$LO_VERSION" "resolve_latest_version_dir finds docs/v* root"
+resolved="$(resolve_active_pr_dir "$LO_ROOT" "$LO_VERSION" "")"
+assert_path_eq "$resolved" "$LO_PR" "resolve_active_pr_dir finds v*-PR* under lowercase root"
+
+echo ""
+echo "=== active PR resolution checks passed ==="

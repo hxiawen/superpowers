@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: block writing-plans when spec preconditions are incomplete
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+block_and_exit() {
+  local reason="$1"
+  emit_block_json "$reason" false
+  exit 2
+}
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+PROMPT_LOWER="$(printf '%s' "$PROMPT" | tr '[:upper:]' '[:lower:]')"
+if ! printf '%s' "$PROMPT_LOWER" | rg -q "(^|\\s)/?writing-plans(\\s|$)|进入[[:space:]]*writing-plans|implementation[[:space:]]*plan|开始[[:space:]]*计划|执行[[:space:]]*计划"; then
+  exit 0
+fi
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+set +e
+LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
+_RES_V=$?
+set -e
+if [ "$_RES_V" -ne 0 ]; then
+  block_and_exit "无法解析版本目录（docs/ 列表失败，请检查权限或磁盘错误）。"
+fi
+if [ -z "$LATEST_VERSION" ]; then
+  block_and_exit "缺少版本目录（docs/Vx.y.z-*）。请先完成 design/spec 文档初始化。"
+fi
+
+VERSION_BASENAME="$(basename "$LATEST_VERSION")"
+VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+DESIGN_FILE="$LATEST_VERSION/${VERSION_PREFIX}-design.md"
+SPEC_FILE="$LATEST_VERSION/${VERSION_PREFIX}-spec.md"
+
+if [ ! -f "$DESIGN_FILE" ]; then
+  block_and_exit "Spec gate 前置未满足：缺少 design 文档（${VERSION_PREFIX}-design.md）。"
+fi
+if [ ! -f "$SPEC_FILE" ]; then
+  block_and_exit "Spec gate 前置未满足：缺少 spec 文档（${VERSION_PREFIX}-spec.md）。"
+fi
+
+if rg -q "\\b(TBD|TODO|DRAFT|待补)\\b" "$SPEC_FILE"; then
+  block_and_exit "Spec gate 前置未满足：spec 仍为 draft/占位状态，请先补齐后再进入 writing-plans。"
+fi
+
+# Required headings: Affected Paths / Invariants / Figma Diff
+if ! rg -qi "受影响路径|Affected[[:space:]]+Paths?|affected[[:space:]]+files?" "$SPEC_FILE"; then
+  block_and_exit "Spec gate 前置未满足：spec 缺少最小代码走查产出（受影响路径）。"
+fi
+if ! rg -qi "不可变约束|Invariants?|non-negotiable|must[[:space:]]+not[[:space:]]+change" "$SPEC_FILE"; then
+  block_and_exit "Spec gate 前置未满足：spec 缺少不可变约束（invariants）。"
+fi
+if ! rg -qi "figma[[:space:]]+差异|Figma[[:space:]]+Diff|design[[:space:]]+diff|与[[:space:]]*figma[[:space:]]*差异" "$SPEC_FILE"; then
+  block_and_exit "Spec gate 前置未满足：spec 缺少与 Figma 的差异说明。"
+fi
+
+exit 0

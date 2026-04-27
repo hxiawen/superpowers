@@ -13,6 +13,8 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
 
+**Scope note:** Treat this as active-PR closure logic. In multi-PR versions, run this closure flow for each PR as it finishes, explicitly switching active PR context on PR transitions, then run version-level aggregation after `PRn` with active PR still bound to `PRn`.
+
 ## The Process
 
 ### Step 1: Verify Tests
@@ -37,6 +39,27 @@ Stop. Don't proceed to Step 2.
 
 **If tests pass:** Continue to Step 2.
 
+### Step 1.5: Mandatory Final Acceptance Tests
+
+Before completion options, run all three acceptance skills for the active PR closure:
+
+1. `autotest` (automated mock environment, Playwright-capable)
+2. `mocktest` (mock data/service scenarios)
+3. `devicetest` (required device profiles)
+
+Command sources (ChatBobi project commands):
+
+- `/Users/harry/Documents/chatbobi/.claude/commands/autotest.md`
+- `/Users/harry/Documents/chatbobi/.claude/commands/mocktest.md`
+- `/Users/harry/Documents/chatbobi/.claude/commands/devicetest.md`
+
+Required logging (must already be in active maintenance, then refreshed here):
+
+- `docs/Vx.y.z-<topic>/Vx.y.z-test.md` must include all three **status lines** in order under the exact H2 **`## Acceptance status (hooks)`** (hooks do not read these from the PR `tdd-log`). PR `tdd-log` remains for TDD case evidence only.
+
+If any of the three tests is missing or failing, stop and do not proceed.
+Do not defer missing evidence to "final cleanup later."
+
 ### Step 2: Determine Base Branch
 
 ```bash
@@ -45,6 +68,44 @@ git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null
 ```
 
 Or ask: "This branch split from main - is that correct?"
+
+### Step 2.5: Finalize Log Gate (Mandatory)
+
+Before presenting options, ensure PR finalize log exists and is updated:
+
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-finalize-log.md`
+
+Required content in finalize log:
+
+- Completed tasks summary
+- Final verification evidence summary
+- Open risks and follow-ups
+- Decision recommendation for merge/PR/keep/discard
+
+Version changelog requirement before Step 3:
+
+- Confirm `docs/Vx.y.z-<topic>/Vx.y.z-changelog.md` contains important corrections from design, development, testing, and release preparation.
+- If any important correction is missing, update changelog first. Do not continue to Step 3.
+
+If finalize log is missing, create/update it first. Do not continue to Step 3.
+
+### Step 2.75: Conditional Release Privacy Audit Gate (Publish Path Only)
+
+Run this step only when the human partner explicitly wants to publish/deploy/package artifacts for end users now.
+For normal development branch closure (merge/PR/keep/discard without release), skip this step.
+
+If publish path is selected, identify the build artifact directory and run a minimum privacy audit before presenting completion options:
+
+- No developer path leakage (for example `/Users/`)
+- No hardcoded credential patterns (for example `sk-ant-`, `sk-proj-`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+- No shipped local database artifacts (`*.db`, `*.db-shm`, `*.db-wal`)
+- No shipped env/credential files (`.env*`, `credentials*`, `*.pem`, `*.key`)
+
+If any item fails:
+
+- Stop immediately
+- Record findings with file references
+- Do not proceed to Step 3 until fixed and re-verified
 
 ### Step 3: Present Options
 
@@ -186,9 +247,12 @@ git worktree remove <worktree-path>
 
 **Always:**
 - Verify tests before offering options
+- Run `autotest` + `mocktest` + `devicetest` before completion and record ordered status under **`## Acceptance status (hooks)`** in `Vx.y.z-test.md`
+- Run release privacy audit when publish path is requested
 - Present exactly 4 options
 - Get typed confirmation for Option 4
 - Clean up worktree for Options 1 & 4 only
+- Require `*-finalize-log.md` before completion options
 
 ## Integration
 

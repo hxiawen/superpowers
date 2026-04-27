@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: enforce acceptance order autotest -> mocktest -> devicetest [-> figma-live-sync]
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+block_and_exit() {
+  local reason="$1"
+  emit_block_json "$reason" false
+  exit 2
+}
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+normalize() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+is_run_request() {
+  local prompt_lower="$1"
+  local skill="$2"
+
+  if printf '%s' "$prompt_lower" | rg -q "(^|\\s)/${skill}(\\s|$)"; then
+    return 0
+  fi
+
+  if printf '%s' "$prompt_lower" | rg -q "(^|\\s)${skill}(\\s|$)" && \
+     printf '%s' "$prompt_lower" | rg -q "运行|执行|启动|开始|验收|测试|run|start|execute|test"; then
+    return 0
+  fi
+
+  if [ "$prompt_lower" = "$skill" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+REQUESTED=""
+PROMPT_LOWER="$(normalize "$PROMPT")"
+if is_run_request "$PROMPT_LOWER" "autotest"; then
+  REQUESTED="autotest"
+elif is_run_request "$PROMPT_LOWER" "mocktest"; then
+  REQUESTED="mocktest"
+elif is_run_request "$PROMPT_LOWER" "devicetest"; then
+  REQUESTED="devicetest"
+else
+  exit 0
+fi
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+set +e
+LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
+_RES_V=$?
+set -e
+if [ "$_RES_V" -ne 0 ]; then
+  block_and_exit "无法解析版本目录（docs/ 列表失败，请检查权限或磁盘错误）。"
+fi
+if [ -z "$LATEST_VERSION" ]; then
+  block_and_exit "缺少版本目录（docs/Vx.y.z-*）。请先创建版本文档后再启动测试。"
+fi
+
+VERSION_BASENAME="$(basename "$LATEST_VERSION")"
+VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+set +e
+LATEST_PR="$(resolve_active_pr_dir "$PROJECT_DIR" "$LATEST_VERSION" "$PROMPT")"
+_RES_P=$?
+set -e
+if [ "$_RES_P" -ne 0 ]; then
+  block_and_exit "无法解析 PR 目录（列表失败，请检查版本目录权限）。"
+fi
+if [ -z "$LATEST_PR" ]; then
+  block_and_exit "缺少 PR 目录（Vx.y.z-PRn）。请先创建 PR 文档后再启动测试。"
+fi
+
+PR_BASENAME="$(basename "$LATEST_PR")"
+PR_TDD_LOG="$LATEST_PR/${PR_BASENAME}-tdd-log.md"
+VERSION_TEST="$LATEST_VERSION/${VERSION_PREFIX}-test.md"
+
+if [ ! -f "$PR_TDD_LOG" ] || [ ! -f "$VERSION_TEST" ]; then
+  block_and_exit "缺少测试文档。必须同时存在 PR级 tdd-log 与版本级 Vx.y.z-test.md。"
+fi
+
+if ! has_case_id_in_file "$PR_TDD_LOG"; then
+  block_and_exit "PR级 tdd-log 缺少详细测试用例（T-xxx/TC-xxx），不允许启动测试。"
+fi
+if ! rg -qi "^##[[:space:]]+Detailed Test Cases" "$VERSION_TEST" || ! has_case_id_in_file "$VERSION_TEST"; then
+  block_and_exit "版本级 Vx.y.z-test.md 缺少 Detailed Test Cases 或用例编号，不允许启动测试。"
+fi
+
+# Policy: quality fields are strictly enforced at Stop gate.
+# Startup gate: case IDs + acceptance order from "## Acceptance status (hooks)" in Vx.y.z-test.md only.
+
+# Determine if design sync is required (plan has Figma Live Design Sync / Design Sync PR)
+DESIGN_SYNC_REQUIRED="false"
+if [ -n "$LATEST_VERSION" ] && plan_has_design_sync "$LATEST_VERSION"; then
+  DESIGN_SYNC_REQUIRED="true"
+fi
+
+EXPECTED="$(next_expected_test_from_version "$VERSION_TEST" "$DESIGN_SYNC_REQUIRED")"
+if [ "$EXPECTED" = "missing_heading" ]; then
+  block_and_exit "版本级 Vx.y.z-test.md 缺少「## Acceptance status (hooks)」标题（须逐字一致，见 version-test-template）。"
+fi
+
+if [ "$EXPECTED" = "done" ]; then
+  exit 0
+fi
+
+# figma-live-sync is never blocked by this hook (not in is_run_request detection).
+# It only appears as EXPECTED when all 3 prior tests are done and plan has Figma Live Design Sync / Design Sync PR.
+# The dedicated /figma-live-design-sync command passes through because this hook only detects autotest/mocktest/devicetest run requests.
+if [ "$REQUESTED" != "$EXPECTED" ]; then
+  ORDER_MSG="autotest -> mocktest -> devicetest"
+  if [ "$DESIGN_SYNC_REQUIRED" = "true" ]; then
+    ORDER_MSG="${ORDER_MSG} -> figma-live-sync"
+  fi
+  block_and_exit "测试顺序强制为 ${ORDER_MSG}。当前应先执行 ${EXPECTED}。"
+fi
+
+exit 0

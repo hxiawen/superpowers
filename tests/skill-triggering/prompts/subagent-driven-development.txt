@@ -1,0 +1,1 @@
+I have a written plan with multiple independent tasks. Please execute it in this same session by dispatching subagents per task, and keep strict review loops before moving to the next task.

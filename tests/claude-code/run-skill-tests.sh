@@ -5,6 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+# shellcheck source=test-helpers.sh
+source "$SCRIPT_DIR/test-helpers.sh"
 
 echo "========================================"
 echo " Claude Code Skills Test Suite"
@@ -58,6 +60,15 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Tests:"
             echo "  test-subagent-driven-development.sh  Test skill loading and requirements"
+            echo "  test-verification-before-completion.sh  Test completion evidence requirements"
+            echo "  test-tdd-report-template.sh  Validate TDD report template required fields"
+            echo "  test-version-test-template.sh  Validate version test template required fields"
+            echo "  test-stop-gate-quality-fields.sh  Validate stop gate missing_fields blocking"
+            echo "  test-version-pr-doc-contract.sh  Validate version/PR/task doc contract rules"
+            echo "  test-active-pr-resolution.sh  Validate multi-PR active context resolution"
+            echo "  test-spec-gate-precheck.sh  Validate spec precheck before writing-plans"
+            echo "  test-evolution-lessons-gate.sh  Validate evolution closure visibility gate"
+            echo "  test-version-source-gate.sh  Validate extension version source gate"
             echo ""
             echo "Integration Tests (use --integration):"
             echo "  test-subagent-driven-development-integration.sh  Full workflow execution"
@@ -74,6 +85,15 @@ done
 # List of skill tests to run (fast unit tests)
 tests=(
     "test-subagent-driven-development.sh"
+    "test-verification-before-completion.sh"
+    "test-tdd-report-template.sh"
+    "test-version-test-template.sh"
+    "test-stop-gate-quality-fields.sh"
+    "test-version-pr-doc-contract.sh"
+    "test-active-pr-resolution.sh"
+    "test-spec-gate-precheck.sh"
+    "test-evolution-lessons-gate.sh"
+    "test-version-source-gate.sh"
 )
 
 # Integration tests (slow, full execution)
@@ -118,7 +138,7 @@ for test in "${tests[@]}"; do
     start_time=$(date +%s)
 
     if [ "$VERBOSE" = true ]; then
-        if timeout "$TIMEOUT" bash "$test_path"; then
+        if run_with_timeout "$TIMEOUT" bash "$test_path"; then
             end_time=$(date +%s)
             duration=$((end_time - start_time))
             echo ""
@@ -138,7 +158,7 @@ for test in "${tests[@]}"; do
         fi
     else
         # Capture output for non-verbose mode
-        if output=$(timeout "$TIMEOUT" bash "$test_path" 2>&1); then
+        if output=$(run_with_timeout "$TIMEOUT" bash "$test_path" 2>&1); then
             end_time=$(date +%s)
             duration=$((end_time - start_time))
             echo "  [PASS] (${duration}s)"

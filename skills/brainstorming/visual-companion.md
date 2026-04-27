@@ -2,9 +2,28 @@
 
 Browser-based visual brainstorming companion for showing mockups, diagrams, and options.
 
+## Figma MCP vs this companion
+
+**Material-triggered intake** may already use **Figma MCP** (when your host provides it) to inspect files the human partner linked. That is for **grounding in existing design artifacts**.
+
+The **Visual Companion** is still for **live, in-session** HTML mockups/diagrams in the local brainstorm browser when you need to *synthesize or compare* options that are not fully specified in Figma.
+
+Use both when it helps: Figma MCP for authoritative frames; Visual Companion for iteration, side-by-side experiments, and terminal-driven choices that need a quick visual.
+
 ## When to Use
 
 Decide per-question, not per-session. The test: **would the user understand this better by seeing it than reading it?**
+
+Default behavior:
+
+- Visual Companion is **available** and should not be globally excluded.
+- Do not force-start it for every brainstorming session.
+- Start it when one of these is true:
+  - User explicitly asks for visual options/comparisons
+  - Current materials include `Design Draft` or `Interactive Demo`
+  - Text discussion is stuck on visual ambiguity after at least one clarification round
+
+If user declines, continue in terminal flow without repeating the same prompt in the same topic.
 
 **Use the browser** when the content itself is visual:
 
@@ -13,6 +32,7 @@ Decide per-question, not per-session. The test: **would the user understand this
 - **Side-by-side visual comparisons** — comparing two layouts, two color schemes, two design directions
 - **Design polish** — when the question is about look and feel, spacing, visual hierarchy
 - **Spatial relationships** — state machines, flowcharts, entity relationships rendered as diagrams
+- **Published-product iteration** — compare current released UI/flow vs option A/B changes on concrete scenarios
 
 **Use the terminal** when the content is text or tabular:
 
@@ -23,6 +43,17 @@ Decide per-question, not per-session. The test: **would the user understand this
 - **Clarifying questions** — anything where the answer is words, not a visual preference
 
 A question *about* a UI topic is not automatically a visual question. "What kind of wizard do you want?" is conceptual — use the terminal. "Which of these wizard layouts feels right?" is visual — use the browser.
+
+## Working Against Existing Released Product
+
+When brainstorming against an already released product, avoid abstract mockups first. Use this order:
+
+1. Capture current baseline evidence (URL/screenshot/recorded steps/user pain point).
+2. Build side-by-side screens: `Current` vs `Option A/B`.
+3. Annotate each option with expected user impact and risk.
+4. Ask user to choose or combine options; only then iterate.
+
+This keeps Visual Companion grounded in real scenarios instead of speculative visuals.
 
 ## How It Works
 

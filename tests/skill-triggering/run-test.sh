@@ -67,6 +67,46 @@ else
     TRIGGERED=false
 fi
 
+# Extra assertions for verification-before-completion
+if [ "$SKILL_NAME" = "verification-before-completion" ] && [ "$TRIGGERED" = "true" ]; then
+    if grep -qiE "fresh verification|run.*command|evidence|no completion claims|same message" "$LOG_FILE"; then
+        echo "✅ PASS: verification-before-completion guidance detected"
+    else
+        echo "❌ FAIL: verification-before-completion guidance not detected"
+        TRIGGERED=false
+    fi
+fi
+
+# Extra assertions for systematic-debugging
+if [ "$SKILL_NAME" = "systematic-debugging" ] && [ "$TRIGGERED" = "true" ]; then
+    if grep -qiE "root cause|phase 1|no fixes without root cause|four phases" "$LOG_FILE"; then
+        echo "✅ PASS: systematic-debugging core guidance detected"
+    else
+        echo "❌ FAIL: systematic-debugging core guidance not detected"
+        TRIGGERED=false
+    fi
+fi
+
+# Extra assertions for test-driven-development
+if [ "$SKILL_NAME" = "test-driven-development" ] && [ "$TRIGGERED" = "true" ]; then
+    if grep -qiE "red|green|failing test|no production code without a failing test first" "$LOG_FILE"; then
+        echo "✅ PASS: test-driven-development core guidance detected"
+    else
+        echo "❌ FAIL: test-driven-development core guidance not detected"
+        TRIGGERED=false
+    fi
+fi
+
+# Extra assertions for executing-plans
+if [ "$SKILL_NAME" = "executing-plans" ] && [ "$TRIGGERED" = "true" ]; then
+    if grep -qiE "read plan|todowrite|verification|finishing-a-development-branch" "$LOG_FILE"; then
+        echo "✅ PASS: executing-plans core guidance detected"
+    else
+        echo "❌ FAIL: executing-plans core guidance not detected"
+        TRIGGERED=false
+    fi
+fi
+
 # Show what skills WERE triggered
 echo ""
 echo "Skills triggered in this run:"

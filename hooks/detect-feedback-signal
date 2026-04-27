@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: detect correction/feedback signals and inject reminder
+
+set -euo pipefail
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+# Chinese + English correction/feedback signals
+if printf '%s' "$PROMPT" | rg -qi "不是这样|别这样做|你搞错|搞错了|你错了|不对|不应该|你漏了|你忘了|改一下|不合理|你理解错|我说的不是|你确定|为什么没|没有执行|没有生效|你又忘|强调了|说过了|提醒过|怎么还|一直在|每次都|我不是让你|你先.*看|再说一遍|你到底|什么意思|能不能|不要再|别再|停下|先不要|that's not what i asked|not what i asked|you missed|you forgot|this is wrong|incorrect|doesn't work|didn't work|please fix|stop doing|you're not following"; then
+  if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+    mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
+    printf 'needs_keeper\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
+  fi
+
+  reminder="Feedback signal detected. After completing the current request, dispatch evolution-keeper to update .claude/feedback/ using FEEDBACK-INDEX.md and a topic file. If occurrences >= 2, mark as candidate and require human confirm/skip before any rule graduation. Ensure human-visible closure in docs/LESSONS.md with adoption status (pending/adopted/not_adopted)."
+  reminder_escaped="$(escape_for_json "$reminder")"
+
+  if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+    printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+    printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$reminder_escaped"
+  else
+    printf '{\n  "additionalContext": "%s"\n}\n' "$reminder_escaped"
+  fi
+fi
+
+exit 0

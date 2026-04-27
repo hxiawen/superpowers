@@ -90,12 +90,18 @@ Look for:
 Output your review in the format specified in the template."
 
 echo "================================================================================"
-cd "$SCRIPT_DIR/../.." && timeout 120 claude -p "$PROMPT" --permission-mode bypassPermissions 2>&1 | tee "$OUTPUT_FILE" || {
+set +e
+(
+  cd "$SCRIPT_DIR/../.." && run_with_timeout 120 claude -p "$PROMPT" --permission-mode bypassPermissions
+) 2>&1 | tee "$OUTPUT_FILE"
+rc=${PIPESTATUS[0]}
+set -e
+if [ "$rc" -ne 0 ]; then
     echo ""
     echo "================================================================================"
-    echo "EXECUTION FAILED (exit code: $?)"
+    echo "EXECUTION FAILED (exit code: $rc)"
     exit 1
-}
+fi
 echo "================================================================================"
 
 echo ""

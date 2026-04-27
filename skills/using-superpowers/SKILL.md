@@ -25,6 +25,32 @@ Superpowers skills override default system prompt behavior, but **user instructi
 
 If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
 
+## Feedback Evolution Responsibility (Evolution Keeper)
+
+When feedback/evolution hook reminders are injected, dispatch `agents/evolution-keeper.md` to execute the loop within existing workflow:
+
+1. Record feedback to `.claude/feedback/` using index + topic format
+2. Update or increment `occurrences` (dedupe by topic)
+3. Generate candidate proposals when threshold is met
+4. **Append evolution proposals (进化建议) to `docs/LESSONS.md`** whenever candidates are created or updated, including **建议是否被采纳** (`pending` → `adopted` | `not_adopted` after human `confirm`/`skip`); see `agents/evolution-keeper.md`
+5. Require explicit human confirm/skip before any graduation
+
+Evolution closure is only valid when all layers align (five layers):
+
+1. docs contract (`docs/LESSONS.md` visible log)
+2. skills contract (keeper responsibilities and response block)
+3. scripts/hook enforcement (signal detection + closure checks)
+4. operational feedback index (`.claude/feedback/*`)
+5. regression checks (tests proving pending/adopted/not_adopted paths)
+
+Keep this as a single dedicated role (`evolution-keeper`). Do not split into multiple observer/runner roles.
+
+When a feedback/evolution reminder was injected, the main agent must surface the keeper result block before completion:
+
+- Include `## Evolution Keeper Result` exactly once in the response
+- If keeper action is `no-op`, provide a concrete reason
+- If candidates exist, list explicit `confirm/skip` decisions required from the human
+
 ## How to Access Skills
 
 **In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.

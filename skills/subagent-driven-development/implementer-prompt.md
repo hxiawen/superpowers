@@ -30,8 +30,8 @@ Task tool (general-purpose):
 
     Once you're clear on requirements:
     1. Implement exactly what the task specifies
-    2. Write tests (following TDD if task says to)
-    3. Verify implementation works
+    2. Follow TDD (RED -> GREEN) and record command evidence
+    3. Verify implementation works with fresh command output
     4. Commit your work
     5. Self-review (see below)
     6. Report back
@@ -103,6 +103,7 @@ Task tool (general-purpose):
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results
+    - RED/GREEN command evidence (commands + outcome)
     - Files changed
     - Self-review findings (if any)
     - Any issues or concerns

@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+# Shared acceptance-order helpers for hooks.
+# Version-level autotest/mocktest/devicetest[/figma-live-sync|codetofigma]: ONLY inside "## Acceptance status (hooks)" (exact H2, no variants).
+
+first_match_line() {
+  local keyword="$1"
+  local file="$2"
+  rg -ni -m 1 "$keyword" "$file" 2>/dev/null | awk -F: 'NR==1{print $1}'
+}
+
+json_escape() {
+  local raw="${1:-}"
+  raw="${raw//\\/\\\\}"
+  raw="${raw//\"/\\\"}"
+  raw="${raw//$'\n'/\\n}"
+  raw="${raw//$'\r'/\\r}"
+  raw="${raw//$'\t'/\\t}"
+  printf '%s' "$raw"
+}
+
+emit_block_json() {
+  local reason="$1"
+  local status_fallback="${2:-false}"
+  shift 2 || true
+  local missing_fields=("$@")
+  local fields_json=""
+  local field
+  if [ "${#missing_fields[@]}" -gt 0 ]; then
+    for field in "${missing_fields[@]}"; do
+      if [ -n "$field" ]; then
+        if [ -n "$fields_json" ]; then
+          fields_json="${fields_json},"
+        fi
+        fields_json="${fields_json}\"$(json_escape "$field")\""
+      fi
+    done
+  fi
+  printf '{"decision":"block","reason":"%s","missing_fields":[%s],"status_fallback":%s}\n' "$(json_escape "$reason")" "$fields_json" "$status_fallback"
+}
+
+emit_block_json_with_meta() {
+  local reason="$1"
+  local status_fallback="${2:-false}"
+  local remediation_owner="${3:-agent}"
+  local block_class="${4:-agent_remediation_required}"
+  local next_step="${5:-agent_fix_and_retry_stop_gate}"
+  shift 5 || true
+  local missing_fields=("$@")
+  local fields_json=""
+  local field
+  if [ "${#missing_fields[@]}" -gt 0 ]; then
+    for field in "${missing_fields[@]}"; do
+      if [ -n "$field" ]; then
+        if [ -n "$fields_json" ]; then
+          fields_json="${fields_json},"
+        fi
+        fields_json="${fields_json}\"$(json_escape "$field")\""
+      fi
+    done
+  fi
+  printf '{"decision":"block","reason":"%s","missing_fields":[%s],"status_fallback":%s,"remediation_owner":"%s","block_class":"%s","next_step":"%s"}\n' \
+    "$(json_escape "$reason")" \
+    "$fields_json" \
+    "$status_fallback" \
+    "$(json_escape "$remediation_owner")" \
+    "$(json_escape "$block_class")" \
+    "$(json_escape "$next_step")"
+}
+
+# Exact H2 only (per docs/version-test-template); no i18n variants.
+extract_acceptance_status_to_file() {
+  local file="$1"
+  local out="$2"
+  if ! rg -q '^## Acceptance status \(hooks\)$' "$file" 2>/dev/null; then
+    return 1
+  fi
+  awk '/^## Acceptance status \(hooks\)$/{flag=1;next} flag && /^## /{exit} flag' "$file" > "$out"
+  return 0
+}
+
+# Validate autotest -> mocktest -> devicetest [-> figma-live-sync] order using first match **inside** "## Acceptance status (hooks)" only.
+# Optional 4th param: design_sync_required="true" to enforce a design-sync status as 4th step (new: figma-live-sync; legacy: codetofigma).
+validate_order_in_acceptance_section() {
+  local file="$1"
+  local scope="$2"
+  local status_fallback="${3:-false}"
+  local design_sync_required="${4:-false}"
+  local tmp
+  local auto_line
+  local mock_line
+  local device_line
+  local design_sync_line
+  tmp=$(mktemp)
+  if ! extract_acceptance_status_to_file "$file" "$tmp"; then
+    rm -f "$tmp"
+    emit_block_json "${scope} 缺少「## Acceptance status (hooks)」小节（标题须逐字一致，见 version-test-template）。" "$status_fallback"
+    return 1
+  fi
+  # Status tokens: English + 中文
+  # Status is mandatory (not keyword-only); optional ? would let bare "autotest" match and defeat the gate.
+  local status_tokens='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)'
+  auto_line="$(first_match_line "autotest[[:space:]:：-]*${status_tokens}" "$tmp")"
+  mock_line="$(first_match_line "mocktest[[:space:]:：-]*${status_tokens}" "$tmp")"
+  device_line="$(first_match_line "devicetest[[:space:]:：-]*${status_tokens}" "$tmp")"
+  design_sync_line=""
+  if [ "$design_sync_required" = "true" ]; then
+    design_sync_line="$(first_match_line "(figma-live-sync|figma_live_sync|figma live sync|codetofigma)[[:space:]:：-]*${status_tokens}" "$tmp")"
+  fi
+  rm -f "$tmp"
+
+  if [ -z "$auto_line" ] || [ -z "$mock_line" ] || [ -z "$device_line" ]; then
+    emit_block_json "${scope} 在「## Acceptance status (hooks)」小节内缺少 autotest/mocktest/devicetest 的带状态结果行。" "$status_fallback"
+    return 1
+  fi
+
+  if [ "$auto_line" -ge "$mock_line" ] || [ "$mock_line" -ge "$device_line" ]; then
+    emit_block_json "${scope} 小节内测试顺序须为 autotest -> mocktest -> devicetest（按首次匹配行号）。" "$status_fallback"
+    return 1
+  fi
+
+  if [ "$design_sync_required" = "true" ]; then
+    if [ -z "$design_sync_line" ]; then
+      emit_block_json "${scope} 在「## Acceptance status (hooks)」小节内缺少 figma-live-sync 的带状态结果行（plan 中包含 Figma Live Design Sync / Design Sync PR；legacy codetofigma 也兼容）。" "$status_fallback"
+      return 1
+    fi
+    if [ "$device_line" -ge "$design_sync_line" ]; then
+      emit_block_json "${scope} 小节内测试顺序须为 autotest -> mocktest -> devicetest -> figma-live-sync（legacy codetofigma 兼容；按首次匹配行号）。" "$status_fallback"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+has_acceptance_status_keyword() {
+  local keyword="$1"
+  local file="$2"
+  local status_pattern
+  status_pattern="${keyword}[[:space:]:：-]*(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)"
+  rg -qi "$status_pattern" "$file"
+}
+
+# next_expected: only ## Acceptance status (hooks) body. Returns missing_heading if H2 absent.
+# Optional 2nd param: design_sync_required="true" to add figma-live-sync/codetofigma as 4th stage.
+next_expected_test_from_version() {
+  local version_test="$1"
+  local design_sync_required="${2:-false}"
+  local tmp
+  tmp=$(mktemp)
+  if ! extract_acceptance_status_to_file "$version_test" "$tmp"; then
+    rm -f "$tmp"
+    printf 'missing_heading'
+    return 0
+  fi
+
+  if has_acceptance_status_keyword "autotest" "$tmp" && \
+     has_acceptance_status_keyword "mocktest" "$tmp" && \
+     has_acceptance_status_keyword "devicetest" "$tmp"; then
+    if [ "$design_sync_required" = "true" ]; then
+      if has_acceptance_status_keyword "figma-live-sync" "$tmp" || \
+         has_acceptance_status_keyword "figma_live_sync" "$tmp" || \
+         has_acceptance_status_keyword "codetofigma" "$tmp"; then
+        rm -f "$tmp"
+        printf 'done'
+        return 0
+      else
+        rm -f "$tmp"
+        printf 'figma-live-sync'
+        return 0
+      fi
+    else
+      rm -f "$tmp"
+      printf 'done'
+      return 0
+    fi
+  fi
+
+  if has_acceptance_status_keyword "autotest" "$tmp" && has_acceptance_status_keyword "mocktest" "$tmp"; then
+    rm -f "$tmp"
+    printf 'devicetest'
+    return 0
+  fi
+
+  if has_acceptance_status_keyword "autotest" "$tmp"; then
+    rm -f "$tmp"
+    printf 'mocktest'
+    return 0
+  fi
+
+  rm -f "$tmp"
+  printf 'autotest'
+}
+
+# Backwards-compatible alias: historically scanned a whole file; now identical to
+# validate_order_in_acceptance_section (## Acceptance status (hooks) … next ## only).
+validate_order_in_file() {
+  local file="$1"
+  local scope="$2"
+  local status_fallback="${3:-false}"
+  local design_sync_required="${4:-false}"
+  validate_order_in_acceptance_section "$file" "$scope" "$status_fallback" "$design_sync_required"
+}
+
+require_pattern_in_file() {
+  local file="$1"
+  local pattern="$2"
+  local reason="$3"
+  local status_fallback="${4:-false}"
+  if ! rg -qi "$pattern" "$file"; then
+    emit_block_json "$reason" "$status_fallback"
+    return 1
+  fi
+  return 0
+}
+
+has_case_id_in_file() {
+  local file="$1"
+  rg -q "\\b(T|TC)-[0-9]{3}\\b" "$file"
+}
+
+resolve_latest_version_dir() {
+  local project_dir="$1"
+  local docs="$project_dir/docs"
+  if [ ! -d "$docs" ]; then
+    printf ''
+    return 0
+  fi
+  # Version roots: docs/Vx.y.z-* or docs/vx.y.z-* ([vV] for case-sensitive filesystems).
+  local -a matches
+  shopt -s nullglob
+  matches=( "$docs"/[vV][0-9]* )
+  shopt -u nullglob
+  if [ "${#matches[@]}" -eq 0 ]; then
+    printf ''
+    return 0
+  fi
+  local out
+  out=$(ls -dt "${matches[@]}" | rg '/docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-' | awk 'NR==1{print;exit}') || return $?
+  printf '%s' "$out"
+  return 0
+}
+
+# Check if version plan includes Figma Live Design Sync / Design Sync PR.
+# Returns 0 if plan mentions new figma-live sync or legacy Design Sync/codetofigma, 1 otherwise.
+plan_has_design_sync() {
+  local version_dir="$1"
+  local version_basename
+  version_basename="$(basename "$version_dir")"
+  local version_prefix
+  version_prefix="$(printf '%s' "$version_basename" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  local plan_file="${version_dir}/${version_prefix}-plan.md"
+  if [ ! -f "$plan_file" ]; then
+    return 1
+  fi
+  rg -qi '(Figma Live Design Sync|figma-live-sync|figma_live_sync|Design Sync|codetofigma)' "$plan_file"
+}
+
+resolve_active_pr_dir() {
+  local project_dir="$1"
+  local version_dir="$2"
+  local hint_text="${3:-}"
+  local candidate=""
+  local active_pr_name=""
+
+  # Highest priority: explicit PR dir env override
+  if [ -n "${SUPERPOWERS_ACTIVE_PR_DIR:-}" ] && [ -d "${SUPERPOWERS_ACTIVE_PR_DIR}" ]; then
+    printf '%s' "${SUPERPOWERS_ACTIVE_PR_DIR}"
+    return 0
+  fi
+
+  # Explicit PR basename override (e.g. V0.1.6-PR2)
+  if [ -n "${SUPERPOWERS_ACTIVE_PR:-}" ] && [ -d "${version_dir}/${SUPERPOWERS_ACTIVE_PR}" ]; then
+    printf '%s' "${version_dir}/${SUPERPOWERS_ACTIVE_PR}"
+    return 0
+  fi
+
+  # Explicit active PR context alias (supports values like PR2 / V0.1.6-PR2)
+  if [ -n "${SUPERPOWERS_ACTIVE_PR_CONTEXT:-}" ]; then
+    active_pr_name="${SUPERPOWERS_ACTIVE_PR_CONTEXT}"
+    if printf '%s' "$active_pr_name" | rg -q '^[Pp][Rr][0-9]+$'; then
+      local _pr_suffix
+      local -a cand
+      _pr_suffix="$(printf '%s' "$active_pr_name" | tr '[:lower:]' '[:upper:]')"
+      shopt -s nullglob
+      cand=( "${version_dir}"/[vV][0-9]*-"${_pr_suffix}" )
+      shopt -u nullglob
+      candidate=""
+      if [ "${#cand[@]}" -gt 0 ]; then
+        candidate="$(ls -dt "${cand[@]}" | awk 'NR==1{print;exit}')" || return $?
+      fi
+      if [ -n "$candidate" ]; then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    elif [ -d "${version_dir}/${active_pr_name}" ]; then
+      printf '%s' "${version_dir}/${active_pr_name}"
+      return 0
+    fi
+  fi
+
+  # Optional project-local active PR marker
+  if [ -f "${project_dir}/.claude/.active-pr" ]; then
+    local marker
+    marker="$(tr -d '[:space:]' < "${project_dir}/.claude/.active-pr" 2>/dev/null || true)"
+    if [ -n "$marker" ]; then
+      if [ -d "$marker" ]; then
+        printf '%s' "$marker"
+        return 0
+      fi
+      if [ -d "${version_dir}/${marker}" ]; then
+        printf '%s' "${version_dir}/${marker}"
+        return 0
+      fi
+    fi
+  fi
+
+  # Prompt hint fallback: extract "PRn" from request text
+  if [ -n "$hint_text" ]; then
+    local hint_pr
+    hint_pr="$(printf '%s' "$hint_text" | tr '[:upper:]' '[:lower:]' | rg -o 'pr[0-9]+' -m 1 2>/dev/null | tr '[:lower:]' '[:upper:]' || true)"
+    if [ -n "$hint_pr" ]; then
+      local -a hint_cand
+      shopt -s nullglob
+      hint_cand=( "${version_dir}"/[vV][0-9]*-"${hint_pr}" )
+      shopt -u nullglob
+      candidate=""
+      if [ "${#hint_cand[@]}" -gt 0 ]; then
+        candidate="$(ls -dt "${hint_cand[@]}" | awk 'NR==1{print;exit}')" || return $?
+      fi
+      if [ -n "$candidate" ]; then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    fi
+  fi
+
+  # Last fallback: latest PR directory under selected version
+  if [ ! -d "$version_dir" ]; then
+    printf ''
+    return 0
+  fi
+  local -a prm
+  shopt -s nullglob
+  prm=( "$version_dir"/[vV]*-PR* )
+  shopt -u nullglob
+  if [ "${#prm[@]}" -eq 0 ]; then
+    printf ''
+    return 0
+  fi
+  local out
+  out=$(ls -dt "${prm[@]}" | awk 'NR==1{print;exit}') || return $?
+  printf '%s' "$out"
+  return 0
+}

@@ -73,19 +73,53 @@ echo ""
 # Using stream-json to get token usage stats
 # --dangerously-skip-permissions for automated testing (subagents don't inherit parent settings)
 cd "$OUTPUT_DIR/project"
+set +e
 claude -p "$PROMPT" \
   --plugin-dir "$PLUGIN_DIR" \
   --dangerously-skip-permissions \
   --output-format stream-json \
   --verbose \
-  > "$LOG_FILE" 2>&1 || true
+  > "$LOG_FILE" 2>&1
+CLAUDE_EXIT_CODE=$?
+set -e
 
 # Extract final stats
 echo ""
 echo ">>> Test complete"
 echo "Project directory: $OUTPUT_DIR/project"
 echo "Claude log: $LOG_FILE"
+echo "Claude exit code: $CLAUDE_EXIT_CODE"
 echo ""
+
+# Automated pass/fail checks (instead of log-only collection)
+FAILED=0
+if rg -q '"name":"Skill".*"skill":"superpowers:subagent-driven-development"' "$LOG_FILE"; then
+  echo "✅ PASS: subagent-driven-development skill was triggered"
+else
+  echo "❌ FAIL: subagent-driven-development skill was not triggered"
+  FAILED=1
+fi
+
+if rg -q '"name":"TodoWrite"' "$LOG_FILE"; then
+  echo "✅ PASS: task tracking (TodoWrite) detected"
+else
+  echo "❌ FAIL: TodoWrite not detected"
+  FAILED=1
+fi
+
+if rg -q '"type":"result"' "$LOG_FILE"; then
+  echo "✅ PASS: result event detected"
+else
+  echo "❌ FAIL: result event not detected"
+  FAILED=1
+fi
+
+if [ "$CLAUDE_EXIT_CODE" -ne 0 ]; then
+  echo "❌ FAIL: claude command exited non-zero ($CLAUDE_EXIT_CODE)"
+  FAILED=1
+else
+  echo "✅ PASS: claude command exited successfully"
+fi
 
 # Show token usage if available
 if command -v jq &> /dev/null; then
@@ -104,3 +138,10 @@ if [[ "$TEST_NAME" == "go-fractals" ]]; then
 elif [[ "$TEST_NAME" == "svelte-todo" ]]; then
   echo "   cd $OUTPUT_DIR/project && npm test && npx playwright test"
 fi
+
+if [ "$FAILED" -ne 0 ]; then
+  exit 1
+fi
+
+echo "✅ PASS: subagent-driven-dev test completed"
+exit 0

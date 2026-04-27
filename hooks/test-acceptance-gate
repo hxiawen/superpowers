@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Stop hook: block session completion when mandatory acceptance tests are missing
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+block_and_exit() {
+  local reason="$1"
+  emit_block_json_with_meta "${reason}（此阻塞应由 Agent 自行补齐后重试，不应请求用户确认。）" "$STATUS_FALLBACK" "agent" "agent_remediation_required" "agent_fix_and_retry_stop_gate"
+  exit 2
+}
+
+block_missing_fields_and_exit() {
+  local reason="$1"
+  shift
+  emit_block_json_with_meta "${reason}（此阻塞应由 Agent 自行补齐后重试，不应请求用户确认。）" "$STATUS_FALLBACK" "agent" "agent_remediation_required" "agent_fix_and_retry_stop_gate" "$@"
+  exit 2
+}
+
+block_user_confirmation_and_exit() {
+  local reason="$1"
+  emit_block_json_with_meta "${reason}（此阻塞需要用户明确确认，Agent 不得自行跳过。）" "$STATUS_FALLBACK" "user" "needs_user_confirmation" "ask_user_for_explicit_confirmation"
+  exit 2
+}
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+STATUS_FILE="$PROJECT_DIR/.claude/.test-acceptance-status"
+SPEC_CHANGE_STATUS_FILE="$PROJECT_DIR/.claude/.spec-change-status"
+STATUS_FALLBACK="false"
+STRICT_STATUS_GATE="false"
+if [ ! -f "$STATUS_FILE" ]; then
+  STATUS_FALLBACK="true"
+else
+  STATE="$(tr -d '[:space:]' < "$STATUS_FILE" 2>/dev/null || true)"
+  if [ "$STATE" = "needs_acceptance" ]; then
+    STRICT_STATUS_GATE="true"
+  elif [ "$STATE" = "clean" ]; then
+    exit 0
+  else
+    STATUS_FALLBACK="true"
+  fi
+fi
+
+if [ "$STRICT_STATUS_GATE" = "false" ] && [ "$STATUS_FALLBACK" = "true" ]; then
+  : # fallback mode enabled, continue with conservative checks below
+fi
+
+if [ -f "$SPEC_CHANGE_STATUS_FILE" ]; then
+  SPEC_CHANGE_STATE="$(tr -d '[:space:]' < "$SPEC_CHANGE_STATUS_FILE" 2>/dev/null || true)"
+  if [ "$SPEC_CHANGE_STATE" = "needs_confirm" ]; then
+    block_user_confirmation_and_exit "检测到 spec 或测试断言文件变更尚未确认。请先由用户明确确认（例如输入“confirm spec change”）后再完成会话。"
+  fi
+fi
+
+set +e
+LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
+_RES_V=$?
+set -e
+if [ "$_RES_V" -ne 0 ]; then
+  block_and_exit "无法解析版本目录（docs/ 列表失败，请检查权限或磁盘错误）。"
+fi
+if [ -z "$LATEST_VERSION" ]; then
+  block_and_exit "缺少版本目录（docs/Vx.y.z-*）。请先完成版本文档与测试验收。"
+fi
+
+VERSION_BASENAME="$(basename "$LATEST_VERSION")"
+VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+set +e
+LATEST_PR="$(resolve_active_pr_dir "$PROJECT_DIR" "$LATEST_VERSION" "")"
+_RES_P=$?
+set -e
+if [ "$_RES_P" -ne 0 ]; then
+  block_and_exit "无法解析 PR 目录（列表失败，请检查版本目录权限）。"
+fi
+if [ -z "$LATEST_PR" ]; then
+  block_and_exit "缺少 PR 目录（Vx.y.z-PRn）。请先完成 PR 级测试验收。"
+fi
+
+PR_BASENAME="$(basename "$LATEST_PR")"
+PR_TDD_LOG="$LATEST_PR/${PR_BASENAME}-tdd-log.md"
+PR_SUBAGENT_SUMMARY="$LATEST_PR/${PR_BASENAME}-subagent-summary.md"
+PR_REVIEW_REPORT="$LATEST_PR/${PR_BASENAME}-review-report.md"
+PR_FINALIZE_LOG="$LATEST_PR/${PR_BASENAME}-finalize-log.md"
+VERSION_TEST="$LATEST_VERSION/${VERSION_PREFIX}-test.md"
+
+missing=0
+if [ ! -f "$PR_TDD_LOG" ]; then
+  missing=1
+fi
+if [ ! -f "$PR_SUBAGENT_SUMMARY" ]; then
+  missing=1
+fi
+if [ ! -f "$PR_REVIEW_REPORT" ]; then
+  missing=1
+fi
+if [ ! -f "$PR_FINALIZE_LOG" ]; then
+  missing=1
+fi
+if [ ! -f "$VERSION_TEST" ]; then
+  missing=1
+fi
+
+if [ "$missing" -ne 0 ]; then
+  block_and_exit "缺少 PR 完整制品。需提供 tdd-log/subagent-summary/review-report/finalize-log 与版本级 Vx.y.z-test.md。"
+fi
+
+# autotest/mocktest/devicetest: version file only, under "## Acceptance status (hooks)" (enforced in validate_order below)
+
+# Detailed test-case gate (both PR and version level)
+if ! has_case_id_in_file "$PR_TDD_LOG"; then
+  block_and_exit "PR级 tdd-log 缺少详细测试用例（T-xxx/TC-xxx）。"
+fi
+if ! rg -qi "^##[[:space:]]+Detailed Test Cases" "$VERSION_TEST"; then
+  block_and_exit "版本级 Vx.y.z-test.md 缺少 Detailed Test Cases 小节。"
+fi
+if ! has_case_id_in_file "$VERSION_TEST"; then
+  block_and_exit "版本级 Vx.y.z-test.md 缺少详细测试用例编号（TC-xxx）。"
+fi
+
+# Template quality gate (strict six-field contract)
+pr_missing_fields=()
+pr_case_entries=()
+while IFS= read -r entry; do
+  pr_case_entries+=("$entry")
+done < <(rg -n -o "T-[0-9]{3}|TC-[0-9]{3}" "$PR_TDD_LOG" 2>/dev/null | awk -F: '!seen[$2]++ {print $1":"$2}')
+if [ "${#pr_case_entries[@]}" -eq 0 ]; then
+  block_and_exit "PR级 tdd-log 缺少详细测试用例（T-xxx/TC-xxx）。"
+fi
+
+pr_total_lines="$(wc -l < "$PR_TDD_LOG" 2>/dev/null || echo 0)"
+for i in "${!pr_case_entries[@]}"; do
+  entry="${pr_case_entries[$i]}"
+  case_line="${entry%%:*}"
+  case_id="${entry#*:}"
+  if [ "$i" -lt "$((${#pr_case_entries[@]} - 1))" ]; then
+    next_entry="${pr_case_entries[$((i + 1))]}"
+    next_case_line="${next_entry%%:*}"
+  else
+    next_case_line="$((pr_total_lines + 1))"
+  fi
+
+  case_slice="$(awk -v s="$case_line" -v e="$next_case_line" 'NR>=s && NR<e {print}' "$PR_TDD_LOG")"
+  if ! printf '%s\n' "$case_slice" | rg -qi "Test Point"; then
+    pr_missing_fields+=("${case_id}:Test Point")
+  fi
+  if ! printf '%s\n' "$case_slice" | rg -qi "Expected Result"; then
+    pr_missing_fields+=("${case_id}:Expected Result")
+  fi
+  if ! printf '%s\n' "$case_slice" | rg -qi "Assertion Target"; then
+    pr_missing_fields+=("${case_id}:Assertion Target")
+  fi
+done
+
+if [ "${#pr_missing_fields[@]}" -gt 0 ]; then
+  block_missing_fields_and_exit "PR级 tdd-log 存在逐用例模板质量字段缺失，无法完成验收。" "${pr_missing_fields[@]}"
+fi
+
+version_missing_fields=()
+if ! rg -qi "Coverage Matrix" "$VERSION_TEST"; then
+  version_missing_fields+=("Coverage Matrix")
+fi
+if ! rg -qi "Expectation Index" "$VERSION_TEST"; then
+  version_missing_fields+=("Expectation Index")
+fi
+if ! rg -qi "Known Blind Spots" "$VERSION_TEST"; then
+  version_missing_fields+=("Known Blind Spots")
+fi
+if [ "${#version_missing_fields[@]}" -gt 0 ]; then
+  block_missing_fields_and_exit "版本级 Vx.y.z-test.md 缺少模板质量字段，无法完成验收。" "${version_missing_fields[@]}"
+fi
+
+# Determine if design sync is required (plan has Figma Live Design Sync / Design Sync PR)
+DESIGN_SYNC_REQUIRED="false"
+if [ -n "$LATEST_VERSION" ] && plan_has_design_sync "$LATEST_VERSION"; then
+  DESIGN_SYNC_REQUIRED="true"
+fi
+
+if ! validate_order_in_acceptance_section "$VERSION_TEST" "版本级 Vx.y.z-test.md" "$STATUS_FALLBACK" "$DESIGN_SYNC_REQUIRED"; then
+  exit 2
+fi
+
+# Evolution visibility gate:
+# if feedback candidate signals exist, LESSONS.md must include adoption status lines.
+if [ -x "$HOOK_DIR/../scripts/check-evolution-closure.sh" ]; then
+  set +e
+  EVOLUTION_CHECK_OUTPUT="$("$HOOK_DIR/../scripts/check-evolution-closure.sh" "$PROJECT_DIR" 2>&1)"
+  EVOLUTION_CHECK_CODE=$?
+  set -e
+  if [ "$EVOLUTION_CHECK_CODE" -eq 2 ]; then
+    block_and_exit "$EVOLUTION_CHECK_OUTPUT"
+  fi
+fi
+
+FEEDBACK_INDEX="$PROJECT_DIR/.claude/feedback/FEEDBACK-INDEX.md"
+LESSONS_FILE="$PROJECT_DIR/docs/LESSONS.md"
+if [ -f "$FEEDBACK_INDEX" ] && rg -qi "status:[[:space:]]*candidate|occurrences:[[:space:]]*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX"; then
+  if [ ! -f "$LESSONS_FILE" ]; then
+    block_and_exit "检测到反馈候选信号，但缺少 docs/LESSONS.md。请先通过 evolution-keeper 记录可见闭环产物。"
+  fi
+  if ! rg -qi "建议是否被采纳[：:][[:space:]]*(pending|adopted|not_adopted)|adoption[：:][[:space:]]*(pending|adopted|not_adopted)" "$LESSONS_FILE"; then
+    block_and_exit "docs/LESSONS.md 缺少进化采纳状态（pending/adopted/not_adopted）。请先补齐闭环记录。"
+  fi
+fi
+
+# Version source drift gate (project-local, optional):
+# If a project defines version-source automation, enforce it at stop gate.
+if [ -x "$PROJECT_DIR/scripts/bump-version.sh" ] && [ -f "$PROJECT_DIR/.version-bump.json" ]; then
+  if ! (cd "$PROJECT_DIR" && bash "./scripts/bump-version.sh" --check >/dev/null 2>&1); then
+    block_and_exit "检测到版本号来源漂移（scripts/bump-version.sh --check 未通过）。请先修复单一版本源再完成。"
+  fi
+fi
+
+# Browser-extension artifact version gate (best-effort):
+# prevent devicetest validating stale production bundles.
+SRC_PKG_JSON="$PROJECT_DIR/src/package.json"
+OUTPUT_MANIFEST="$PROJECT_DIR/.output/chrome-mv3/manifest.json"
+if [ -f "$SRC_PKG_JSON" ] && [ -f "$OUTPUT_MANIFEST" ] && command -v jq >/dev/null 2>&1; then
+  SRC_VERSION="$(jq -r '.version // empty' "$SRC_PKG_JSON" 2>/dev/null || true)"
+  MANIFEST_VERSION="$(jq -r '.version // empty' "$OUTPUT_MANIFEST" 2>/dev/null || true)"
+  if [ -n "$SRC_VERSION" ] && [ -n "$MANIFEST_VERSION" ] && [ "$SRC_VERSION" != "$MANIFEST_VERSION" ]; then
+    block_and_exit "生产构建版本号与源码版本号不一致（src/package.json=${SRC_VERSION}, manifest=${MANIFEST_VERSION}）。请先重建产物并校正版本。"
+  fi
+fi
+
+printf 'clean\n' > "$STATUS_FILE"
+if [ -f "$PROJECT_DIR/.claude/.evolution-required" ]; then
+  rm -f "$PROJECT_DIR/.claude/.evolution-required"
+fi
+exit 0

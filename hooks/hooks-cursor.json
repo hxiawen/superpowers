@@ -1,9 +1,40 @@
 {
   "version": 1,
   "hooks": {
+    "userPromptSubmit": [
+      {
+        "command": "./hooks/figma-url-readiness-gate"
+      },
+      {
+        "command": "./hooks/spec-change-confirm"
+      },
+      {
+        "command": "./hooks/spec-gate-precheck"
+      },
+      {
+        "command": "./hooks/enforce-acceptance-order"
+      },
+      {
+        "command": "./hooks/detect-feedback-signal"
+      }
+    ],
     "sessionStart": [
       {
         "command": "./hooks/session-start"
+      },
+      {
+        "command": "./hooks/check-evolution"
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|EditNotebook|NotebookEdit|ApplyPatch",
+        "command": "./hooks/mark-test-acceptance-needed"
+      }
+    ],
+    "stop": [
+      {
+        "command": "./hooks/test-acceptance-gate"
       }
     ]
   }

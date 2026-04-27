@@ -149,12 +149,19 @@ Begin now. Execute the plan."
 
 echo "Running Claude (output will be shown below and saved to $OUTPUT_FILE)..."
 echo "================================================================================"
-cd "$SCRIPT_DIR/../.." && timeout 1800 claude -p "$PROMPT" --allowed-tools=all --add-dir "$TEST_PROJECT" --permission-mode bypassPermissions 2>&1 | tee "$OUTPUT_FILE" || {
+# Pipeline can fail under set -e/pipefail before PIPESTATUS is read; temporarily disable -e.
+set +e
+(
+  cd "$SCRIPT_DIR/../.." && run_with_timeout 1800 claude -p "$PROMPT" --allowed-tools=all --add-dir "$TEST_PROJECT" --permission-mode bypassPermissions
+) 2>&1 | tee "$OUTPUT_FILE"
+rc=${PIPESTATUS[0]}
+set -e
+if [ "$rc" -ne 0 ]; then
     echo ""
     echo "================================================================================"
-    echo "EXECUTION FAILED (exit code: $?)"
+    echo "EXECUTION FAILED (exit code: $rc)"
     exit 1
-}
+fi
 echo "================================================================================"
 
 echo ""

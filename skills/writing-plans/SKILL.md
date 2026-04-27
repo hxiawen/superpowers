@@ -13,14 +13,116 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
-**Context:** This should be run in a dedicated worktree (created by brainstorming skill).
+**Context:** This should be run with a dedicated worktree available before Stage 5 execution (provisioned by `using-git-worktrees` when `subagent-driven-development` starts).
 
-**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
-- (User preferences for plan location override this default)
+**Save plans to:** `docs/Vx.y.z-<topic>/Vx.y.z-plan.md`
+ - (Use the exact version root confirmed during brainstorming)
 
 ## Scope Check
 
 If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
+
+## Task Boundary Clarity Check
+
+Before finalizing tasks, run a quick boundary check for each task:
+
+- **Value boundary:** What user-visible value does this task deliver?
+- **Execution boundary:** Can an engineer complete this task without guessing missing requirements?
+- **Scope boundary:** Does the task avoid leaking into unrelated concerns?
+- **Ambiguity scan:** Replace vague verbs like "improve", "optimize", "handle", "support" with concrete behavior.
+
+If a task fails these checks, rewrite it before proceeding. This is a clarity enhancement, not a workflow change.
+
+## Test Evidence Requirement
+
+Planning is not complete unless testing evidence is auditable.
+
+For each task, include at least:
+
+- One RED step (command + expected failure signal)
+- One GREEN step (command + expected pass signal)
+- One rerun rule after code change ("if implementation changes, rerun verification")
+
+In addition to `docs/Vx.y.z-<topic>/Vx.y.z-plan.md`, produce or update:
+
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-tdd-log.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-subagent-summary.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-review-report.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-finalize-log.md`
+- Start from `docs/superpowers/templates/tdd-report-template.md` and adapt it to PR-level log path
+
+This report must map `spec -> plan task -> test evidence`.
+
+## PR Splitting Strategy (Mandatory)
+
+Before finalizing the plan:
+
+- Build a lightweight task dependency graph
+- Group dependent tasks into the same PR
+- Split independent or unrelated tasks into separate PRs
+- Assign sequential execution order as `PR1..PRn` (single-PR versions still use `PR1`)
+- If the version includes UI, visual design, CSS token, component layout, or Figma-facing changes, append a final PR named `PRn: Figma Live Design Sync`. This PR uses `superpowers:figma-live-design-sync` and wraps `codetofigma` as a sub-step; do not create a standalone `codetofigma`-only PR for new plans.
+- Add a `PR Grouping` section in `Vx.y.z-plan.md` documenting:
+  - PR name
+  - included task IDs
+  - dependency rationale
+
+
+### Figma Live Design Sync PR
+
+When appended, the final `Figma Live Design Sync` PR has one orchestration responsibility: prove that Figma output generated from product code matches the product source. It must include these plan tasks:
+
+1. Generate or patch the Figma plugin script with `codetofigma`.
+2. Bootstrap once: the human opens the target Figma design and runs the plugin once.
+3. Run live sync loop with `superpowers:figma-live-design-sync`: update plugin code, verify hot reload or assisted rerun, call `/figma-read` on the same URL/node, and compare metadata/screenshot/design context against source.
+4. Respect loop budget: default 3 rounds, hard cap 5 rounds unless the human explicitly approves more.
+5. Record loop status and remaining diffs in the PR docs and version test summary.
+
+Acceptance status for new plans should use `figma-live-sync: pass|fail|blocked` under `## Acceptance status (hooks)` after `devicetest`. Legacy `codetofigma: ...` remains accepted for old plans only.
+
+For each PR in grouping, define startup artifacts before execution begins:
+
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-tdd-log.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-subagent-summary.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-review-report.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-finalize-log.md`
+- `docs/Vx.y.z-<topic>/Vx.y.z-test.md` (version-level aggregate file must already exist and be maintained across PR loops)
+
+Initialize missing PR artifacts with minimal skeleton headings and status placeholders at plan completion time. Do not defer `subagent-summary`, `review-report`, or `finalize-log` creation to subagent execution or finalization. Acceptance preflight and stop gate depend on the full PR doc pack existing before execution begins.
+
+## PR Execution Loop Handoff (Mandatory)
+
+The plan must hand off execution as a PR loop, not one linear pass across all tasks:
+
+1. Activate `PR1`
+2. Run PR loop: `TDD -> Subagent Development (or Executing Plans) -> Review`; record `autotest -> mocktest -> devicetest` and, when the plan includes `Figma Live Design Sync`, `figma-live-sync` in `Vx.y.z-test.md` only under **`## Acceptance status (hooks)`**; then `Debug` if needed
+3. Move to next PR after current PR passes review; version-level stop gate covers ordered acceptance in `Vx.y.z-test.md`
+4. On each PR transition (`PR1 -> PR2 -> ...`), set active PR context for PR-scoped docs before hooks that need it. The acceptance **block** is in the version file, not per-PR.
+5. After `PRn` completion, run version-level regression/aggregation before final branch completion while keeping active PR bound to `PRn` where needed for PR paths.
+
+## Version Governance Outputs (Mandatory)
+
+Plan completion requires these files to exist under version root:
+
+- `Vx.y.z-design.md`
+- `Vx.y.z-spec.md`
+- `Vx.y.z-plan.md`
+- `Vx.y.z-changelog.md`
+- `Vx.y.z-decisions.md`
+
+## Evolution Reminder Handling
+
+If SessionStart injects an evolution reminder:
+
+- Dispatch `agents/evolution-keeper.md`
+- Have it read `.claude/feedback/FEEDBACK-INDEX.md`
+- Have it identify entries with `status: candidate` or `occurrences >= 2`
+- Have it produce structured proposals and ask the human to confirm/skip each one
+- Have it **append** candidate summaries to `docs/LESSONS.md` with **建议是否被采纳** (`pending` / `adopted` / `not_adopted`), updating via append when the human confirms or skips
+- Require it to return candidate list + required decisions so the main flow can present them verbatim
+- Never auto-graduate rules without explicit confirmation
+- Keep closure evidence cross-layer: feedback index + keeper output + `docs/LESSONS.md` entries must describe the same candidate state.
 
 ## File Structure
 
@@ -59,6 +161,12 @@ This structure informs the task decomposition. Each task should produce self-con
 
 ---
 ```
+
+**Add this line immediately after the header block:**
+
+`**Version Root:** docs/Vx.y.z-<topic>/`
+
+`**PR Grouping:** Vx.y.z-PR1/PR2/... with task mapping`
 
 ## Task Structure
 
@@ -135,7 +243,7 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Two execution options:**
+**"Plan complete and saved to `docs/Vx.y.z-<topic>/Vx.y.z-plan.md`. Two execution options:**
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 

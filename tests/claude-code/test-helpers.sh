@@ -1,6 +1,46 @@
 #!/usr/bin/env bash
 # Helper functions for Claude Code skill tests
 
+resolve_timeout_bin() {
+    if command -v timeout >/dev/null 2>&1; then
+        echo "timeout"
+        return 0
+    fi
+    if command -v gtimeout >/dev/null 2>&1; then
+        echo "gtimeout"
+        return 0
+    fi
+    echo ""
+}
+
+# Run a command with a wall-clock limit (GNU timeout / gtimeout / Python fallback).
+# Usage: run_with_timeout SECONDS command [args...]
+run_with_timeout() {
+    local timeout_s="$1"
+    shift
+    local timeout_bin
+    timeout_bin="$(resolve_timeout_bin)"
+
+    if [ -n "$timeout_bin" ]; then
+        "$timeout_bin" "$timeout_s" "$@"
+        return $?
+    fi
+
+    python3 - "$timeout_s" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout_s = int(sys.argv[1])
+cmd = sys.argv[2:]
+
+try:
+    result = subprocess.run(cmd, timeout=timeout_s)
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+PY
+}
+
 # Run Claude Code with a prompt and capture output
 # Usage: run_claude "prompt text" [timeout_seconds] [allowed_tools]
 run_claude() {
@@ -15,8 +55,38 @@ run_claude() {
         cmd="$cmd --allowed-tools=$allowed_tools"
     fi
 
-    # Run Claude in headless mode with timeout
-    if timeout "$timeout" bash -c "$cmd" > "$output_file" 2>&1; then
+    # Run Claude in headless mode with timeout (or fallback without timeout)
+    local timeout_bin
+    timeout_bin="$(resolve_timeout_bin)"
+    if [ -n "$timeout_bin" ]; then
+        run_cmd=("$timeout_bin" "$timeout" bash -c "$cmd")
+        if "${run_cmd[@]}" > "$output_file" 2>&1; then
+            cat "$output_file"
+            rm -f "$output_file"
+            return 0
+        else
+            local exit_code=$?
+            cat "$output_file" >&2
+            rm -f "$output_file"
+            return $exit_code
+        fi
+    fi
+
+    # Fallback timeout implementation using Python when no timeout binary exists.
+    if python3 - "$timeout" "$cmd" > "$output_file" 2>&1 <<'PY'
+import subprocess
+import sys
+
+timeout_s = int(sys.argv[1])
+command = sys.argv[2]
+
+try:
+    result = subprocess.run(["bash", "-c", command], timeout=timeout_s)
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+PY
+    then
         cat "$output_file"
         rm -f "$output_file"
         return 0
@@ -192,6 +262,8 @@ EOF
 }
 
 # Export functions for use in tests
+export -f run_with_timeout
+export -f resolve_timeout_bin
 export -f run_claude
 export -f assert_contains
 export -f assert_not_contains

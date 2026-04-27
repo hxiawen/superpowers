@@ -47,6 +47,7 @@ Task tool (general-purpose):
     - Did they build things that weren't requested?
     - Did they over-engineer or add unnecessary features?
     - Did they add "nice to haves" that weren't in spec?
+    - Did they introduce API/route/schema/feature drift vs plan/spec?
 
     **Misunderstandings:**
     - Did they interpret requirements differently than intended?
@@ -58,4 +59,5 @@ Task tool (general-purpose):
     Report:
     - ✅ Spec compliant (if everything matches after code inspection)
     - ❌ Issues found: [list specifically what's missing or extra, with file:line references]
+    - ⚡ Spec Drift: [list unexpected additions explicitly, even if otherwise correct]
 ```
