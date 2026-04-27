@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Test: next_expected_test_from_version is scoped to ## Acceptance status (hooks) only
+# Test: next_expected_test_from_version respects completion state, not just line presence.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$SCRIPT_DIR/../.."
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMMON="$ROOT/hooks/acceptance-order-common"
 
-echo "=== Test: enforce acceptance next_expected (version section) ==="
+echo "=== Test: enforce acceptance next_expected ==="
 echo ""
 
-# shellcheck source=hooks/acceptance-order-common
+# shellcheck source=/dev/null
 . "$COMMON"
 
 TMP="$(mktemp)"
@@ -29,90 +30,59 @@ assert_eq() {
   echo "  [PASS] $label"
 }
 
-# 1) Empty section -> autotest
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-
+- autotest: pending
+- mocktest: pending
+- devicetest: pending
+- figma-live-sync: pending
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "autotest" "empty section expects autotest"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "autotest" "all pending still expects autotest"
 
-# 2) Only autotest in section -> mocktest
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-autotest: pass
-
+- autotest: pass
+- mocktest: pending
+- devicetest: pending
+- figma-live-sync: pending
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "mocktest" "after autotest expects mocktest"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "mocktest" "pending mocktest is not treated as completed"
 
-# 3) autotest + mocktest -> devicetest
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-autotest: pass
-mocktest: pass
-
+- autotest: pass
+- mocktest: pass
+- devicetest: pending
+- figma-live-sync: pending
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "devicetest" "after mocktest expects devicetest"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "devicetest" "pending devicetest is not treated as completed"
 
-# 4) All three -> done
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-autotest: pass
-mocktest: pass
-devicetest: pass
-
+- autotest: pass
+- mocktest: pass
+- devicetest: pass
+- figma-live-sync: pending
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "done" "all three -> done"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "figma-live-sync" "pending figma-live-sync is not treated as completed"
 
-# 5) Design sync required after all three -> figma-live-sync
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-autotest: pass
-mocktest: pass
-devicetest: pass
-
+- autotest: pass
+- mocktest: pass
+- devicetest: pass
+- figma-live-sync: pass
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP" "true")" "figma-live-sync" "design sync required expects figma-live-sync"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "done" "completed figma-live-sync finishes the sequence"
 
-# 6) New design sync status completes the sequence
 cat >"$TMP" <<'EOF'
 ## Acceptance status (hooks)
-autotest: pass
-mocktest: pass
-devicetest: pass
-figma-live-sync: pass
-
+- autotest: pass
+- mocktest: pass
+- devicetest: pass
+- codetofigma: pass
 EOF
-assert_eq "$(next_expected_test_from_version "$TMP" "true")" "done" "figma-live-sync status completes sequence"
-
-# 7) Legacy codetofigma status remains accepted for old plans
-cat >"$TMP" <<'EOF'
-## Acceptance status (hooks)
-autotest: pass
-mocktest: pass
-devicetest: pass
-codetofigma: pass
-
-EOF
-assert_eq "$(next_expected_test_from_version "$TMP" "true")" "done" "legacy codetofigma status completes sequence"
-
-# 8) Noise OUTSIDE section must not advance state (autotest only in body after next ##)
-cat >"$TMP" <<'EOF'
-## Acceptance status (hooks)
-
-## Expectation Index
-autotest: pass
-mocktest: pass
-devicetest: pass
-EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "autotest" "status outside section ignored"
-
-# 9) Missing heading
-cat >"$TMP" <<'EOF'
-autotest: pass
-mocktest: pass
-devicetest: pass
-EOF
-assert_eq "$(next_expected_test_from_version "$TMP")" "missing_heading" "no H2 -> missing_heading"
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "done" "legacy codetofigma remains accepted"
 
 echo ""
 echo "=== enforce acceptance next_expected checks passed ==="

@@ -21,8 +21,13 @@ block_missing_fields_and_exit() {
 }
 
 block_user_confirmation_and_exit() {
-  local reason="$1"
-  emit_block_json_with_meta "${reason}（此阻塞需要用户明确确认，Agent 不得自行跳过。）" "$STATUS_FALLBACK" "user" "needs_user_confirmation" "ask_user_for_explicit_confirmation"
+  local block_key="$1"
+  local reason="$2"
+  if user_confirmation_block_already_prompted "$block_key"; then
+    exit 0
+  fi
+  remember_user_confirmation_block "$block_key"
+  emit_block_json_with_meta "${reason}（此阻塞需要用户明确确认，Agent 仅提醒一次，随后等待用户输入。）" "$STATUS_FALLBACK" "user" "needs_user_confirmation" "ask_user_for_explicit_confirmation_once"
   exit 2
 }
 
@@ -55,9 +60,11 @@ fi
 if [ -f "$SPEC_CHANGE_STATUS_FILE" ]; then
   SPEC_CHANGE_STATE="$(tr -d '[:space:]' < "$SPEC_CHANGE_STATUS_FILE" 2>/dev/null || true)"
   if [ "$SPEC_CHANGE_STATE" = "needs_confirm" ]; then
-    block_user_confirmation_and_exit "检测到 spec 或测试断言文件变更尚未确认。请先由用户明确确认（例如输入“confirm spec change”）后再完成会话。"
+    block_user_confirmation_and_exit "spec_change_pending_confirmation" "检测到 spec 或测试断言文件变更尚未确认。请先由用户明确确认（例如输入“confirm spec change”）后再完成会话。"
   fi
 fi
+
+clear_user_confirmation_block_state
 
 set +e
 LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"

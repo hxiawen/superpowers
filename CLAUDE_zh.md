@@ -99,6 +99,7 @@ docs/
 
 - 规划后必须按 PR 执行：围绕活动 PR（`PR1..PRn`）循环，不是单线走完整个版本。
 - **钩子读哪一段：** 三层环境验收 `autotest`、`mocktest`、`devicetest` 的**带状态结果**只写在 `Vx.y.z-test.md` 中、且必须在固定二级标题 **`## Acceptance status (hooks)`** 下（逐字、不得变体或翻译标题）。`hooks/enforce-acceptance-order` 与 `hooks/test-acceptance-gate` **仅在该小节内**判定顺序与是否齐全；**不会**从 PR 的 `tdd-log` 读这三类结果。见 `docs/superpowers/templates/versioning/version-test-template.md`。当 `Vx.y.z-plan.md` 包含 `Figma Live Design Sync` 时，钩子还要求在 `devicetest` 后追加第四行 `figma-live-sync`（旧计划的 `codetofigma` 仍兼容）。
+- 仅更新 `## Acceptance status (hooks)` 里的状态行，属于运行时验收回写，不得重新拉起 spec/test 确认门。重新确认只针对真实断言变更：详细测试用例、Coverage/Expectation/Blind Spots 内容，或 `*.spec.ts` 这类可执行测试断言文件。
 - **PR 级 tdd-log：** 仅放 TDD/RED–GREEN 证据与逐条 `Test Point` / `Expected Result` / `Assertion Target`。
 - 建议工作顺序：按版本执行 `TDD -> Subagent Development -> Review`（PR 循环）；进行最终验收时依序跑 `autotest -> mocktest -> devicetest`，当 plan 包含 `Figma Live Design Sync` 时追加 `figma-live-sync`，并写入上述 **`## Acceptance status (hooks)`**；再按需 `Debug`。
 - `PRn` 完成后，在最终合入分支前须先做版本级回归/聚合。
@@ -111,6 +112,7 @@ docs/
 - 当验收结果缺失或顺序错误时，停止门阻止完成。
 - 当 PR 文档包不完整（`tdd-log`、`subagent-summary`、`review-report`、`finalize-log`）或规格/规格与测试的修改未获明确确认时，停止门也阻止完成。
 - 混合停止策略：若验收状态缺失/异常，停止门采用保守回退检查，不得静默通过。
+- 对 user-owned 的 stop block，提醒策略必须是“提醒一次，然后等待”。同一阻塞在提醒一次后若再次触发，必须直接安静结束当前回合，等待用户输入；Agent 不得继续刷“等待 confirm spec change”之类的催促。
 - 顺序逻辑由 `hooks/acceptance-order-common` 在钩子间共享，避免漂移。
 - **停止门责任分流（强制）：** 当 stop hook 返回结构化阻塞 JSON 时，必须按责任字段分流，不能靠自然语言猜测。若 `remediation_owner="agent"` 或 `block_class="agent_remediation_required"`，智能体必须先自行补齐缺失制品/证据/字段/顺序问题，再重试门禁，期间不得向夏索要无效确认。若 `remediation_owner="user"` 或 `block_class="needs_user_confirmation"`，智能体才可以暂停推进，并仅请求 `next_step` 指定的明确确认/动作。只有标记为 user-owned 的阻塞可升级给夏；缺 PR 文档包、缺测试证据、缺质量字段、验收顺序错误等默认都属于 agent-owned。
 - **活动 PR 解析**（供钩子用）：`SUPERPOWERS_ACTIVE_PR_DIR` > `SUPERPOWERS_ACTIVE_PR` > `SUPERPOWERS_ACTIVE_PR_CONTEXT` > `.claude/.active-pr` > 提示中的 `PRn` 线索 > 版本目录下最新 `V*-PR*`。可复制示例与完整优先级说明见 README 章节 **Active PR context (hooks)**。

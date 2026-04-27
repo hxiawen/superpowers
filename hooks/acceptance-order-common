@@ -67,6 +67,44 @@ emit_block_json_with_meta() {
     "$(json_escape "$next_step")"
 }
 
+user_confirmation_block_state_file() {
+  local project_dir="${CLAUDE_PROJECT_DIR:-}"
+  if [ -z "$project_dir" ]; then
+    return 1
+  fi
+  printf '%s/.claude/.last-user-confirmation-block' "$project_dir"
+}
+
+remember_user_confirmation_block() {
+  local block_key="$1"
+  local state_file
+  state_file="$(user_confirmation_block_state_file 2>/dev/null || true)"
+  if [ -n "$state_file" ]; then
+    mkdir -p "$(dirname "$state_file")"
+    printf '%s\n' "$block_key" > "$state_file"
+  fi
+}
+
+user_confirmation_block_already_prompted() {
+  local block_key="$1"
+  local state_file
+  local previous_key=""
+  state_file="$(user_confirmation_block_state_file 2>/dev/null || true)"
+  if [ -z "$state_file" ] || [ ! -f "$state_file" ]; then
+    return 1
+  fi
+  previous_key="$(tr -d '[:space:]' < "$state_file" 2>/dev/null || true)"
+  [ "$previous_key" = "$block_key" ]
+}
+
+clear_user_confirmation_block_state() {
+  local state_file
+  state_file="$(user_confirmation_block_state_file 2>/dev/null || true)"
+  if [ -n "$state_file" ]; then
+    rm -f "$state_file"
+  fi
+}
+
 # Exact H2 only (per docs/version-test-template); no i18n variants.
 extract_acceptance_status_to_file() {
   local file="$1"
@@ -139,6 +177,14 @@ has_acceptance_status_keyword() {
   rg -qi "$status_pattern" "$file"
 }
 
+has_completed_acceptance_status_keyword() {
+  local keyword="$1"
+  local file="$2"
+  local status_pattern
+  status_pattern="${keyword}[[:space:]:：-]*(pass|fail|blocked|skip|green|red|通过|失败|阻塞|跳过)"
+  rg -qi "$status_pattern" "$file"
+}
+
 # next_expected: only ## Acceptance status (hooks) body. Returns missing_heading if H2 absent.
 # Optional 2nd param: design_sync_required="true" to add figma-live-sync/codetofigma as 4th stage.
 next_expected_test_from_version() {
@@ -152,13 +198,13 @@ next_expected_test_from_version() {
     return 0
   fi
 
-  if has_acceptance_status_keyword "autotest" "$tmp" && \
-     has_acceptance_status_keyword "mocktest" "$tmp" && \
-     has_acceptance_status_keyword "devicetest" "$tmp"; then
+  if has_completed_acceptance_status_keyword "autotest" "$tmp" && \
+     has_completed_acceptance_status_keyword "mocktest" "$tmp" && \
+     has_completed_acceptance_status_keyword "devicetest" "$tmp"; then
     if [ "$design_sync_required" = "true" ]; then
-      if has_acceptance_status_keyword "figma-live-sync" "$tmp" || \
-         has_acceptance_status_keyword "figma_live_sync" "$tmp" || \
-         has_acceptance_status_keyword "codetofigma" "$tmp"; then
+      if has_completed_acceptance_status_keyword "figma-live-sync" "$tmp" || \
+         has_completed_acceptance_status_keyword "figma_live_sync" "$tmp" || \
+         has_completed_acceptance_status_keyword "codetofigma" "$tmp"; then
         rm -f "$tmp"
         printf 'done'
         return 0
@@ -174,13 +220,13 @@ next_expected_test_from_version() {
     fi
   fi
 
-  if has_acceptance_status_keyword "autotest" "$tmp" && has_acceptance_status_keyword "mocktest" "$tmp"; then
+  if has_completed_acceptance_status_keyword "autotest" "$tmp" && has_completed_acceptance_status_keyword "mocktest" "$tmp"; then
     rm -f "$tmp"
     printf 'devicetest'
     return 0
   fi
 
-  if has_acceptance_status_keyword "autotest" "$tmp"; then
+  if has_completed_acceptance_status_keyword "autotest" "$tmp"; then
     rm -f "$tmp"
     printf 'mocktest'
     return 0

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse hook: mark acceptance test status as pending after code edits
+# PostToolUse hook: only require confirmation for real spec/assertion edits.
+# Status-only updates inside Vx.y.z-test.md -> "## Acceptance status (hooks)"
+# are operational write-back and must not reopen spec confirmation.
 
 set -euo pipefail
 
@@ -13,9 +15,7 @@ STATUS_DIR="$PROJECT_DIR/.claude"
 STATUS_FILE="$STATUS_DIR/.test-acceptance-status"
 SPEC_CHANGE_STATUS_FILE="$STATUS_DIR/.spec-change-status"
 mkdir -p "$STATUS_DIR"
-printf 'needs_acceptance\n' > "$STATUS_FILE"
 
-# Normalize tool-reported paths: relative -> under CLAUDE_PROJECT_DIR; keep absolute as-is.
 normalize_tool_path() {
   local root="$1"
   local raw="$2"
@@ -23,38 +23,113 @@ normalize_tool_path() {
     printf ''
     return 0
   fi
+
   local t="${raw#./}"
   if [ "${t#/}" != "$t" ]; then
     printf '%s' "$t"
     return 0
   fi
+
   case "$root" in
     */) printf '%s%s' "$root" "$t" ;;
     *) printf '%s/%s' "$root" "$t" ;;
   esac
 }
 
-# Version-level spec/test under docs/ (absolute or relative) + e2e-style *.spec.ts(x) / *.spec.js(x)
 SPEC_OR_ASSERTION_SOURCE_PATTERN='(^|/)docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[Vv][0-9]+\.[0-9]+\.[0-9]+-(spec|test)\.md$|(^|/)(test|tests|e2e)/.*\.spec\.(ts|tsx|js|jsx)$'
+VERSION_TEST_FILE_PATTERN='(^|/)docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[Vv][0-9]+\.[0-9]+\.[0-9]+-test\.md$'
+NON_ACCEPTANCE_PATH_PATTERN='(^|/)(docs|design)/|(^|/)\.claude/'
+ACCEPTANCE_STATUS_HEADING_PATTERN='^[[:space:]]*##[[:space:]]+Acceptance status \(hooks\)[[:space:]]*$'
+ACCEPTANCE_STATUS_KEY_PATTERN='(autotest|mocktest|devicetest|figma-live-sync|figma_live_sync|figma live sync|codetofigma)'
+ACCEPTANCE_STATUS_VALUE_PATTERN='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)'
+ACCEPTANCE_STATUS_LINE_PATTERN="^[[:space:]]*[-*]?[[:space:]]*${ACCEPTANCE_STATUS_KEY_PATTERN}[[:space:]]*[:：-][[:space:]]*${ACCEPTANCE_STATUS_VALUE_PATTERN}([[:space:]].*)?$"
+ACCEPTANCE_STATUS_KEY_ONLY_PATTERN="^[[:space:]]*[-*]?[[:space:]]*${ACCEPTANCE_STATUS_KEY_PATTERN}[[:space:]]*[:：-]?[[:space:]]*$"
+ACCEPTANCE_STATUS_VALUE_ONLY_PATTERN="^[[:space:]]*${ACCEPTANCE_STATUS_VALUE_PATTERN}[[:space:]]*$"
 
-if command -v jq >/dev/null 2>&1 && [ -n "$INPUT" ]; then
-  SPEC_CHANGED="false"
-  while IFS= read -r candidate_path; do
-    [ -z "$candidate_path" ] && continue
-    normalized="$(normalize_tool_path "$PROJECT_DIR" "$candidate_path")"
-    if [ -n "$normalized" ] && [ -e "$normalized" ] && command -v realpath >/dev/null 2>&1; then
-      rp="$(realpath "$normalized" 2>/dev/null || true)"
-      [ -n "$rp" ] && normalized="$rp"
-    fi
-    if printf '%s' "$normalized" | rg -qi "$SPEC_OR_ASSERTION_SOURCE_PATTERN"; then
-      SPEC_CHANGED="true"
-      break
-    fi
-  done < <(printf '%s' "$INPUT" | jq -r '.. | objects | .path? // .file_path? // .filePath? // empty' 2>/dev/null || true)
+if ! command -v jq >/dev/null 2>&1 || [ -z "$INPUT" ]; then
+  exit 0
+fi
 
-  if [ "$SPEC_CHANGED" = "true" ]; then
-    printf 'needs_confirm\n' > "$SPEC_CHANGE_STATUS_FILE"
+requires_acceptance="false"
+spec_changed="false"
+
+snippet_is_acceptance_status_only() {
+  local snippet="$1"
+  local saw_content="false"
+  local line
+
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    if [ -z "${line//[[:space:]]/}" ]; then
+      continue
+    fi
+    saw_content="true"
+    if printf '%s\n' "$line" | rg -q "$ACCEPTANCE_STATUS_HEADING_PATTERN"; then
+      continue
+    fi
+    if printf '%s\n' "$line" | rg -q "$ACCEPTANCE_STATUS_LINE_PATTERN"; then
+      continue
+    fi
+    if printf '%s\n' "$line" | rg -q "$ACCEPTANCE_STATUS_KEY_ONLY_PATTERN"; then
+      continue
+    fi
+    if printf '%s\n' "$line" | rg -q "$ACCEPTANCE_STATUS_VALUE_ONLY_PATTERN"; then
+      continue
+    fi
+    return 1
+  done <<< "$snippet"
+
+  [ "$saw_content" = "true" ]
+}
+
+edit_is_status_only_for_version_test() {
+  local path="$1"
+  local old_snippet="$2"
+  local new_snippet="$3"
+
+  if ! printf '%s' "$path" | rg -qi "$VERSION_TEST_FILE_PATTERN"; then
+    return 1
   fi
+
+  if [ -z "$old_snippet" ] || [ -z "$new_snippet" ]; then
+    return 1
+  fi
+
+  snippet_is_acceptance_status_only "$old_snippet" && \
+    snippet_is_acceptance_status_only "$new_snippet"
+}
+
+while IFS= read -r record; do
+  [ -z "$record" ] && continue
+
+  candidate_path="$(printf '%s' "$record" | jq -r '.path // empty' 2>/dev/null || true)"
+  old_snippet="$(printf '%s' "$record" | jq -r '.old // empty' 2>/dev/null || true)"
+  new_snippet="$(printf '%s' "$record" | jq -r '.new // empty' 2>/dev/null || true)"
+  [ -z "$candidate_path" ] && continue
+
+  normalized="$(normalize_tool_path "$PROJECT_DIR" "$candidate_path")"
+  if [ -n "$normalized" ] && [ -e "$normalized" ] && command -v realpath >/dev/null 2>&1; then
+    resolved="$(realpath "$normalized" 2>/dev/null || true)"
+    [ -n "$resolved" ] && normalized="$resolved"
+  fi
+
+  if printf '%s' "$normalized" | rg -qi "$SPEC_OR_ASSERTION_SOURCE_PATTERN"; then
+    if ! edit_is_status_only_for_version_test "$normalized" "$old_snippet" "$new_snippet"; then
+      spec_changed="true"
+    fi
+  fi
+
+  if ! printf '%s' "$normalized" | rg -qi "$NON_ACCEPTANCE_PATH_PATTERN"; then
+    requires_acceptance="true"
+  fi
+done < <(printf '%s' "$INPUT" | jq -rc '.. | objects | select((.path? // .file_path? // .filePath?) != null) | {path:(.path? // .file_path? // .filePath?), old:(.old_string? // .oldString? // ""), new:(.new_string? // .newString? // "")}' 2>/dev/null || true)
+
+if [ "$requires_acceptance" = "true" ]; then
+  printf 'needs_acceptance\n' > "$STATUS_FILE"
+fi
+
+if [ "$spec_changed" = "true" ]; then
+  printf 'needs_confirm\n' > "$SPEC_CHANGE_STATUS_FILE"
 fi
 
 exit 0
