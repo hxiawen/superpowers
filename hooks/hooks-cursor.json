@@ -3,6 +3,9 @@
   "hooks": {
     "userPromptSubmit": [
       {
+        "command": "./hooks/superpowers-runtime-sync-reminder"
+      },
+      {
         "command": "./hooks/figma-url-readiness-gate"
       },
       {

@@ -27,6 +27,7 @@
 每次开发会话中，按以下方式推进与收尾工作：
 
 1. 将工作路由到正确阶段（`brainstorming -> ... -> finishing-a-development-branch`）。
+2. 任何 `superpowers` 维护任务都必须走 `Superpowers Runtime Sync`：先 fork，再 overlay，最后才是 installed cache。
 2. 执行版本/PR 产物约定（六份版本级文件 + 四份 PR 级文件；第六份为 `Vx.y.z-test.md`）。
 3. 确保写入测试证据：PR 级 `Vx.y.z-PRn-tdd-log.md`（TDD 用例）与版本级 `Vx.y.z-test.md`（汇总；**`autotest`/`mocktest`/`devicetest` 唯一落点**，当 plan 包含 `Figma Live Design Sync` 时也包含 `figma-live-sync` — 见下节）。
 4. 遵守验收顺序门控（`autotest -> mocktest -> devicetest -> figma-live-sync(按计划)`），**仅**写在 `Vx.y.z-test.md` 的 **`## Acceptance status (hooks)`** 小节内（标题逐字、不得变体）。
@@ -58,6 +59,26 @@ docs/
 ```
 
 迁移规则：若仅存在旧版 `Vx.y.z-PRn-code-review.md` 而缺少 `Vx.y.z-PRn-review-report.md`，先重命名，再继续写作。
+
+## Superpowers Runtime Sync 路由
+
+当任务涉及 `superpowers` 的 hooks、commands、skills、rules、overlay 文件、部署脚本、本地发版记录，或已安装插件 cache 时：
+
+1. 版本控制真源是 `/Users/harry/Documents/GitHub/superpowers-fork`
+2. 部署辅助层是 `docs/superpowers-local/`
+3. `~/.claude/plugins/cache/claude-plugins-official/superpowers/<version>/` 下的 installed cache 只是运行时目标
+
+强制维护顺序：
+
+1. 先在 fork 中编辑并验证
+2. 再把受管文件 capture 到 overlay
+3. 用 `docs/scripts/sync-superpowers-fork.sh status` 检查漂移
+4. 用 `docs/scripts/sync-superpowers-fork.sh deploy latest` 部署
+5. 在真实 Claude 会话中做黑盒验证
+6. 追加 `docs/superpowers-local/LOCAL_RELEASES.md`
+7. 最后在 fork 中 commit、push、tag，并更新 `changelogs.md`
+
+除非用户明确批准紧急 hotfix 路径，否则不要把 ChatBobi overlay 文件或 installed cache 当成主要编辑位置。
 
 ## 运行时约定（Superpowers 5.0.7）
 
