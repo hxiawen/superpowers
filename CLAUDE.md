@@ -27,6 +27,7 @@ What should Xia choose? (multi-select or binary)
 In each development session, advance and close work as follows:
 
 1. Route work to the correct phase (`brainstorming -> ... -> finishing-a-development-branch`).
+2. Route `superpowers` maintenance work through `Superpowers Runtime Sync`: fork first, overlay second, installed cache last.
 2. Enforce the version/PR artifact contract (six version-level files + four PR-level files; the sixth is `Vx.y.z-test.md`).
 3. Ensure test evidence is written: PR `Vx.y.z-PRn-tdd-log.md` (TDD cases) and version `Vx.y.z-test.md` (summary + **only** place for `autotest`/`mocktest`/`devicetest` status lines, plus `figma-live-sync` when the plan includes `Figma Live Design Sync`; see **Acceptance Tests and Gates**).
 4. Observe the acceptance-order gate (`autotest -> mocktest -> devicetest -> figma-live-sync(when planned)`), recorded under **`## Acceptance status (hooks)`** in `Vx.y.z-test.md` only.
@@ -58,6 +59,26 @@ docs/
 ```
 
 Migration rule: if only the legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` is missing, rename first, then continue writing.
+
+## Superpowers Runtime Sync Routing
+
+When the task is about `superpowers` hooks, commands, skills, rules, overlay files, deployment scripts, local release ledgers, or the installed plugin cache:
+
+1. Version-control truth source is `/Users/harry/Documents/GitHub/superpowers-fork`.
+2. Deployment helper layer is `docs/superpowers-local/`.
+3. Installed cache under `~/.claude/plugins/cache/claude-plugins-official/superpowers/<version>/` is the runtime target only.
+
+Mandatory maintenance order:
+
+1. Edit and validate in the fork.
+2. Capture managed files into the overlay.
+3. Check drift with `docs/scripts/sync-superpowers-fork.sh status`.
+4. Deploy with `docs/scripts/sync-superpowers-fork.sh deploy latest`.
+5. Black-box verify in a real Claude session.
+6. Append `docs/superpowers-local/LOCAL_RELEASES.md`.
+7. Commit, push, tag, and update `changelogs.md` in the fork.
+
+Do not treat ChatBobi overlay files or the installed cache as the primary editing location unless the user explicitly approves an emergency hotfix path.
 
 ## Runtime Contract (Superpowers 5.0.7)
 

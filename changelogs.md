@@ -9,7 +9,8 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
-| **确认门误报** 与 **重复催促**：`Acceptance status` 状态回写不再误触发 spec confirm；user-owned stop block 只提醒一次后静默等待 | [→ 打开](#sec-20260428-confirm-gate) |
+| **Superpowers 维护任务先走 Runtime Sync**：在 fork / overlay / installed cache 三层之间建立固定路由，并用 submit hook 主动提醒 | [→ 打开](#sec-20260428-runtime-sync-route) |
+| **确认门误报**、**重复催促** 与 **本地/云端治理**：`Acceptance status` 状态回写不再误触发 spec confirm；user-owned stop block 只提醒一次后静默等待；补齐本地库/云端库的回滚、拉取、合并模型 | [→ 打开](#sec-20260428-confirm-gate) |
 | **Figma URL 读回** 与 **Live Design Sync** 闭环：Design Draft 先 `/figma-read`，UI 计划尾部 PR 升级为 `Figma Live Design Sync` | [→ 打开](#sec-20260426-figma-live-sync) |
 | **三验收** 只以版本文件里 **`## Acceptance status (hooks)`** 为准；**Stop** 不允许「只写 autotest/mocktest 单词、无 pass/fail」混过去 | [→ 打开](#sec-20260423-acceptance) |
 | **Hook/测试** 更稳：nullglob、多语言状态、**spec 路径**；脚本的 **run_with_timeout / PIPESTATUS** 等 | [→ 打开](#sec-20260423-hooks) |
@@ -42,6 +43,56 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260428-runtime-sync-route"></a>
+## 2026-04-28 Superpowers 维护任务先走 Runtime Sync
+
+> **发版** `sp-v5.0.7-xia-2026-04-28-02` — 核心：把 `superpowers` 的维护任务显式路由到 `fork -> overlay -> installed cache`，并通过新的 `UserPromptSubmit` reminder hook 主动提醒不要直接在 ChatBobi overlay 或 runtime cache 上起手改。
+
+### 结论
+
+这批修复解决的是一个“流程能做，但入口不显眼”的问题：
+
+1. `Superpowers Runtime Sync` 以前主要藏在 skill / command 里，用户一旦在 ChatBobi 仓库里直接提「改 hook / 改流程 / 发版部署」，会很容易绕过真源路径，先改 overlay 或 cache。
+2. 现在 fork 与 runtime docs 都明确写出三层真源顺序：`fork -> overlay -> installed cache`。
+3. 新增 `superpowers-runtime-sync-reminder` 后，只要用户在维护语境里提到 `superpowers`、`hook`、`fork`、`cache`、`deploy`、`release` 等关键词，submit hook 就会主动注入 routing 提醒。
+
+### 变更范围
+
+- **runtime docs**
+  - `CLAUDE.md`
+  - `CLAUDE_zh.md`
+    - 新增 `Superpowers Runtime Sync Routing` 章节
+    - 明确要求：先 fork，后 overlay，再 runtime cache
+
+- **hooks**
+  - `hooks/hooks.json`
+  - `hooks/hooks-cursor.json`
+    - `UserPromptSubmit` 链路最前面接入 `superpowers-runtime-sync-reminder`
+  - `hooks/superpowers-runtime-sync-reminder`
+    - 检测 `superpowers` 维护类 prompt
+    - 注入 `fork -> capture -> status -> deploy -> verify -> LOCAL_RELEASES -> commit/push/tag/changelogs` 提醒
+
+- **tests**
+  - 新增 `tests/claude-code/test-superpowers-runtime-sync-reminder.sh`
+    - 校验维护类 prompt 会注入提醒
+    - 校验普通业务 prompt 不会误报
+
+### 验证
+
+- `bash tests/claude-code/test-superpowers-runtime-sync-reminder.sh`
+- `bash hooks/superpowers-runtime-sync-reminder <<< '{"prompt":"帮我改一下 superpowers 的 hook 和本地发版流程"}'`
+- ChatBobi 侧：
+  - `docs/scripts/sync-superpowers-fork.sh capture`
+  - `docs/scripts/sync-superpowers-fork.sh status`
+  - `docs/scripts/sync-superpowers-fork.sh deploy latest`
+- 部署后对 installed cache 再跑一次：
+  - `bash ~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/tests/claude-code/test-superpowers-runtime-sync-reminder.sh`
+
+### 审查 / 风险
+
+- 该 reminder 只负责**路由提醒**，不直接阻断会话，因此不会像 stop gate 一样引入硬拦截噪声。
+- 关键词匹配仍有边界；后续若出现过宽或过窄的触发，再沿同一路径补测试和规则。
 
 <a id="sec-20260428-confirm-gate"></a>
 ## 2026-04-28 确认门误报与重复催促治理
@@ -98,6 +149,81 @@
 
 - 这批修复优先面向 **Claude Code stop hook / submit hook 交互噪声**，不会放宽真实断言变更的确认要求。
 - `Acceptance status` 豁免逻辑现在兼容 token 级替换，但仍依赖工具上报的 `old_string/new_string` 语义；若未来宿主工具更换事件载荷格式，需要复测该分支。
+
+### 本地库 / 云端库治理模型
+
+这次还把 `superpowers` 的维护边界从“直接改 cache”提升成了三层结构，便于 **回滚**、**拉取**、**合并**：
+
+1. **本机运行层：installed cache**
+   - 位置：`~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/`
+   - 作用：Claude Code 实际执行的 hook / skill / command 就在这里
+   - 风险：宿主升级或刷新 cache 后，这一层可能被覆盖
+
+2. **工作区受管层：local managed overlay**
+   - 位置：
+     - `docs/superpowers-local/overlay/`
+     - `docs/superpowers-local/MANAGED_FILES.txt`
+     - `docs/scripts/manage-superpowers-local.sh`
+   - 作用：
+     - 记录“夏老板本机真正要保留的改动文件”
+     - 提供本地整包备份与覆盖式重放
+   - 对应能力：
+     - **本地回滚**：`manage-superpowers-local.sh restore <backup.tar.gz>`
+     - **本地重放**：`manage-superpowers-local.sh deploy latest`
+     - **本地状态检查**：`manage-superpowers-local.sh status`
+
+3. **云端版本层：GitHub fork / snapshot branch**
+   - 仓库：`doubleweir/superpowers`
+   - 官方上游：`obra/superpowers`
+   - 本地快照分支：`xia/cache-package-5.0.7`
+   - 快照 tag：
+     - `xia-local-cache-5.0.7-2026-04-28-01`
+     - 本次正式发版 tag：`sp-v5.0.7-xia-2026-04-28-01`
+   - 作用：
+     - 让“当前本机在跑的 package 形态”可被 GitHub 保存、拉取、对照、回滚
+     - 让后续 merge 官方更新时，不必再从 cache 目录反向猜补丁
+
+### 可回滚
+
+- **机器本地回滚**
+  - 用 `docs/superpowers-local/backups/*.tar.gz` 恢复某个完整安装快照
+  - 适合：cache 被覆盖、hook 改坏、想回到某次本机可运行状态
+
+- **Git 级回滚**
+  - 在 `reference/superpowers-fork` 中：
+    - 切回分支：`xia/cache-package-5.0.7`
+    - 或 checkout 指定 tag：`xia-local-cache-5.0.7-2026-04-28-01` / `sp-v5.0.7-xia-2026-04-28-01`
+  - 适合：需要恢复到某次已记录、已推送的版本线
+
+### 可拉取
+
+- 新机器或新环境上，可以：
+  - `git clone` / `git pull` `doubleweir/superpowers`
+  - checkout `xia/cache-package-5.0.7` 或指定 tag
+  - 再把对应文件部署到本地 installed cache
+- 这意味着恢复不再依赖“当前这台机器还留着旧 cache”
+
+### 可合并
+
+- **官方线**
+  - `main` / `upstream/main` 继续代表官方仓库语义
+
+- **夏老板自维护线**
+  - `xia/cache-package-5.0.7` 代表“当前本机 package 形态 + 夏老板本地治理修复”
+
+- **后续合并策略**
+  1. `git fetch upstream`
+  2. 评估官方更新是否要吸收进夏老板维护线
+  3. 在受控分支里 merge / cherry-pick 官方变更
+  4. 重新跑 hook / tests 回归
+  5. 通过后再打新的 `sp-v5.0.7-xia-*` tag
+
+换句话说：  
+从这版开始，`superpowers` 不再只是“cache 里的一坨临时修改”，而是有了：
+- **本地可恢复**
+- **云端可拉取**
+- **官方可合并**
+- **发版可追溯**
 
 <a id="sec-20260426-figma-live-sync"></a>
 ## 2026-04-26 Figma URL 读回与 Live Design Sync 闭环
