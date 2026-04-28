@@ -9,6 +9,7 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
+| **验收顺序 hook 不再误拦普通对话**：只在明确启动 `autotest/mocktest/devicetest` 时拦截，讨论测试和引用历史报错不再被 `UserPromptSubmit` 误判 | [→ 打开](#sec-20260428-acceptance-false-positive) |
 | **Superpowers 维护任务先走 Runtime Sync**：在 fork / overlay / installed cache 三层之间建立固定路由，并用 submit hook 主动提醒 | [→ 打开](#sec-20260428-runtime-sync-route) |
 | **确认门误报**、**重复催促** 与 **本地/云端治理**：`Acceptance status` 状态回写不再误触发 spec confirm；user-owned stop block 只提醒一次后静默等待；补齐本地库/云端库的回滚、拉取、合并模型 | [→ 打开](#sec-20260428-confirm-gate) |
 | **Figma URL 读回** 与 **Live Design Sync** 闭环：Design Draft 先 `/figma-read`，UI 计划尾部 PR 升级为 `Figma Live Design Sync` | [→ 打开](#sec-20260426-figma-live-sync) |
@@ -43,6 +44,47 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260428-acceptance-false-positive"></a>
+## 2026-04-28 验收顺序 hook 不再误拦普通对话
+
+> **发版** `sp-v5.0.7-xia-2026-04-28-03` — 核心：`UserPromptSubmit` 的 `enforce-acceptance-order` 不再把“讨论测试 / 引用 AutoTest / 反馈被 hook 拦截”的普通聊天误判成真的测试启动请求。
+
+### 结论
+
+这批修复解决的是一个 submit hook 误判问题：
+
+1. 旧规则只要在同一段输入里同时看到 `autotest` / `mocktest` / `devicetest` 和“测试 / 执行 / 启动”之类词，就可能把普通对话误判成“要启动测试”。
+2. 结果是用户在描述问题、粘贴历史对话、讨论回归用例，甚至只是提到 `AutoTest` 技能时，也会被 `UserPromptSubmit operation blocked by hook` 拦住。
+3. 现在 hook 只在更明确的启动意图上触发：如 `/autotest`、`请执行 autotest`、`start mocktest` 这类请求；普通讨论不会再被拦。
+
+### 变更范围
+
+- **hooks**
+  - `hooks/enforce-acceptance-order`
+    - 收紧 `is_run_request` 识别逻辑
+    - 保留真正测试启动请求的顺序门禁
+    - 放过包含测试名词但不构成命令的普通讨论
+
+- **tests**
+  - 新增 `tests/claude-code/test-enforce-acceptance-order-trigger.sh`
+    - 校验提到 `AutoTest` 的讨论不误拦
+    - 校验引用 `mocktest` / `devicetest` 的反馈描述不误拦
+    - 校验 `/autotest` 和 `请执行 autotest` 这类显式请求仍会按顺序被拦
+
+### 验证
+
+- `bash tests/claude-code/test-enforce-acceptance-order-trigger.sh`
+- `bash tests/claude-code/test-enforce-acceptance-next-expected.sh`
+- ChatBobi 侧正式同步链路：
+  - `docs/scripts/sync-superpowers-fork.sh capture`
+  - `docs/scripts/sync-superpowers-fork.sh deploy latest`
+  - `docs/scripts/manage-superpowers-local.sh status 5.0.7`
+
+### 审查 / 风险
+
+- 这次修复刻意把触发条件从“宽匹配测试词”收紧到“更像真的启动命令”，优先解决普通聊天被封口的问题。
+- 当前规则仍是正则启发式匹配；如果后续出现新的中文命令表达误漏判，需要继续补回归测试，而不是再放宽到讨论语境。
 
 <a id="sec-20260428-runtime-sync-route"></a>
 ## 2026-04-28 Superpowers 维护任务先走 Runtime Sync

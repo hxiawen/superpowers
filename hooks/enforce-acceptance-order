@@ -40,17 +40,22 @@ normalize() {
 is_run_request() {
   local prompt_lower="$1"
   local skill="$2"
+  local compact
+  compact="$(printf '%s' "$prompt_lower" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
 
-  if printf '%s' "$prompt_lower" | rg -q "(^|\\s)/${skill}(\\s|$)"; then
+  if printf '%s' "$prompt_lower" | rg -q "(^|[[:space:]])/${skill}([[:space:][:punct:]]|$)"; then
     return 0
   fi
 
-  if printf '%s' "$prompt_lower" | rg -q "(^|\\s)${skill}(\\s|$)" && \
-     printf '%s' "$prompt_lower" | rg -q "运行|执行|启动|开始|验收|测试|run|start|execute|test"; then
+  if printf '%s' "$compact" | rg -q "(^|[[:space:][:punct:]])((请|帮我|麻烦你|先|去|现在|直接)[[:space:]]*)?(运行|执行|启动|开始|run|start|execute)[[:space:]]+/?${skill}([[:space:][:punct:]]|$)"; then
     return 0
   fi
 
-  if [ "$prompt_lower" = "$skill" ]; then
+  if printf '%s' "$compact" | rg -q "(^|[[:space:][:punct:]])/?${skill}[[:space:]]+(验收|测试|run|start|execute)([[:space:][:punct:]]|$)"; then
+    return 0
+  fi
+
+  if [ "$compact" = "$skill" ] || [ "$compact" = "/$skill" ]; then
     return 0
   fi
 
@@ -116,7 +121,6 @@ fi
 # Policy: quality fields are strictly enforced at Stop gate.
 # Startup gate: case IDs + acceptance order from "## Acceptance status (hooks)" in Vx.y.z-test.md only.
 
-# Determine if design sync is required (plan has Figma Live Design Sync / Design Sync PR)
 DESIGN_SYNC_REQUIRED="false"
 if [ -n "$LATEST_VERSION" ] && plan_has_design_sync "$LATEST_VERSION"; then
   DESIGN_SYNC_REQUIRED="true"
@@ -131,9 +135,6 @@ if [ "$EXPECTED" = "done" ]; then
   exit 0
 fi
 
-# figma-live-sync is never blocked by this hook (not in is_run_request detection).
-# It only appears as EXPECTED when all 3 prior tests are done and plan has Figma Live Design Sync / Design Sync PR.
-# The dedicated /figma-live-design-sync command passes through because this hook only detects autotest/mocktest/devicetest run requests.
 if [ "$REQUESTED" != "$EXPECTED" ]; then
   ORDER_MSG="autotest -> mocktest -> devicetest"
   if [ "$DESIGN_SYNC_REQUIRED" = "true" ]; then
