@@ -9,6 +9,7 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
+| `/figma-read`：**官方 `figma`（远程）** 与 **`figma-desktop`（本机 3845）** 双 MCP 命名、推荐配置与仅装插件时的备选 | [→ 打开](#sec-20260430-figma-read-mcp-dual) |
 | **Runtime Sync 真源、缓存防误改、SessionStart 反馈索引兼容一起补齐**：补 manual、补远端清理、阻止直接改 runtime cache，并修复 `check-evolution` 对表格格式 feedback index 的兼容 | [→ 打开](#sec-20260430-runtime-sync-hardening) |
 | **验收顺序 hook 不再误拦普通对话**：只在明确启动 `autotest/mocktest/devicetest` 时拦截，讨论测试和引用历史报错不再被 `UserPromptSubmit` 误判 | [→ 打开](#sec-20260428-acceptance-false-positive) |
 | **Superpowers 维护任务先走 Runtime Sync**：在 fork / overlay / installed cache 三层之间建立固定路由，并用 submit hook 主动提醒 | [→ 打开](#sec-20260428-runtime-sync-route) |
@@ -45,6 +46,32 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260430-figma-read-mcp-dual"></a>
+## 2026-04-30 `/figma-read`：官方 `figma` 与 `figma-desktop` 双 MCP（文档）
+
+> **文档增补** — 可与下一枚 `sp-v5.0.7-xia-*` 发版条目合并记入 tag/commit。
+
+### 结论
+
+在 `commands/figma-read.md` 的 Step 2 增加 **§2.0**：对照 [Figma MCP Server Guide](https://github.com/figma/mcp-server-guide)，说明官方默认服务名 **`figma`**（`https://mcp.figma.com/mcp`，工具前缀 **`mcp__figma__*`**）与 Superpowers 约定的 **`figma-desktop`**（本机 `http://127.0.0.1:3845/mcp`，工具前缀 **`mcp__figma-desktop__*`**）；推荐并行理解两者；读取路径以本机 Desktop 连通为优先依据之一；提示勿泄露令牌。`LOCAL_RELEASES` / `MANAGED_FILES` 纳入 `commands/figma-read.md` 与 `changelogs.md` 以便 Runtime Sync deploy。
+
+### 变更范围
+
+- `commands/figma-read.md`
+- `changelogs.md`（本条目）
+- ChatBobi `docs/superpowers-local/MANAGED_FILES.txt`（新增上述两路径，参与 capture/deploy）
+
+### 验证
+
+- 通读 `commands/figma-read.md` Step 2：`2.0` → `2.1` → `2.2` 衔接一致
+- `docs/scripts/sync-superpowers-fork.sh status` → 受管文件 `IN_SYNC`
+
+### 审查 / 风险
+
+- 无行为层 hook/skill 逻辑变更；仅文档与 deploy 覆盖面扩展。
+
+---
 
 <a id="sec-20260430-runtime-sync-hardening"></a>
 ## 2026-04-30 Runtime Sync 真源、缓存防误改、SessionStart 反馈索引兼容一起补齐
