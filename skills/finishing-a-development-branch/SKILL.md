@@ -141,11 +141,13 @@ git merge <feature-branch>
 # Verify tests on merged result
 <test command>
 
-# If tests pass
+# If tests pass — clean up both local and remote
 git branch -d <feature-branch>
+git push origin --delete <feature-branch> 2>/dev/null || true
+git remote prune origin
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Final verification (Step 5)
 
 #### Option 2: Push and Create PR
 
@@ -164,7 +166,7 @@ EOF
 )"
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Final verification (Step 5)
 
 #### Option 3: Keep As-Is
 
@@ -190,13 +192,31 @@ If confirmed:
 ```bash
 git checkout <base-branch>
 git branch -D <feature-branch>
+git push origin --delete <feature-branch> 2>/dev/null || true
+git remote prune origin
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Final verification (Step 5)
 
-### Step 5: Cleanup Worktree
+### Step 5: Final Verification
 
-**For Options 1, 2, 4:**
+After executing the chosen option, run this checklist to confirm clean state:
+
+```bash
+# 1. Verify on correct branch
+git branch --show-current  # Should be <base-branch>
+
+# 2. Verify no stale remote branches
+git branch -r  # Should only show expected remote branches
+
+# 3. Verify local is in sync with remote
+git status
+
+# 4. If worktree was used, verify cleanup
+git worktree list  # Should not show stale worktrees
+```
+
+**For Options 1, 4:**
 
 Check if in worktree:
 ```bash
@@ -208,16 +228,25 @@ If yes:
 git worktree remove <worktree-path>
 ```
 
-**For Option 3:** Keep worktree.
+**For Option 2, 3:** Don't cleanup worktree.
+
+**Report final state:**
+```
+Branch closure complete:
+- Current branch: <base-branch>
+- Feature branch <name>: deleted (local + remote)
+- Worktree: cleaned up / preserved
+- Remote tracking: pruned
+```
 
 ## Quick Reference
 
-| Option | Merge | Push | Keep Worktree | Cleanup Branch |
-|--------|-------|------|---------------|----------------|
-| 1. Merge locally | ✓ | - | - | ✓ |
-| 2. Create PR | - | ✓ | ✓ | - |
-| 3. Keep as-is | - | - | ✓ | - |
-| 4. Discard | - | - | - | ✓ (force) |
+| Option | Merge | Push | Keep Worktree | Cleanup Local Branch | Cleanup Remote Branch |
+|--------|-------|------|---------------|----------------------|----------------------|
+| 1. Merge locally | ✓ | - | - | ✓ | ✓ |
+| 2. Create PR | - | ✓ | ✓ | - | - |
+| 3. Keep as-is | - | - | ✓ | - | - |
+| 4. Discard | - | - | - | ✓ (force) | ✓ |
 
 ## Common Mistakes
 
@@ -237,6 +266,10 @@ git worktree remove <worktree-path>
 - **Problem:** Accidentally delete work
 - **Fix:** Require typed "discard" confirmation
 
+**Forgetting remote branch cleanup**
+- **Problem:** Merged/discarded branches remain on remote indefinitely, accumulating stale branches and confusing repo state
+- **Fix:** Always delete remote branch + `git remote prune origin` for Options 1 and 4
+
 ## Red Flags
 
 **Never:**
@@ -252,6 +285,8 @@ git worktree remove <worktree-path>
 - Present exactly 4 options
 - Get typed confirmation for Option 4
 - Clean up worktree for Options 1 & 4 only
+- Delete remote branch + prune for Options 1 & 4
+- Report final state after cleanup (Step 5)
 - Require `*-finalize-log.md` before completion options
 
 ## Integration

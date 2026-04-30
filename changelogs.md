@@ -9,6 +9,7 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
+| **Runtime Sync 真源、缓存防误改、SessionStart 反馈索引兼容一起补齐**：补 manual、补远端清理、阻止直接改 runtime cache，并修复 `check-evolution` 对表格格式 feedback index 的兼容 | [→ 打开](#sec-20260430-runtime-sync-hardening) |
 | **验收顺序 hook 不再误拦普通对话**：只在明确启动 `autotest/mocktest/devicetest` 时拦截，讨论测试和引用历史报错不再被 `UserPromptSubmit` 误判 | [→ 打开](#sec-20260428-acceptance-false-positive) |
 | **Superpowers 维护任务先走 Runtime Sync**：在 fork / overlay / installed cache 三层之间建立固定路由，并用 submit hook 主动提醒 | [→ 打开](#sec-20260428-runtime-sync-route) |
 | **确认门误报**、**重复催促** 与 **本地/云端治理**：`Acceptance status` 状态回写不再误触发 spec confirm；user-owned stop block 只提醒一次后静默等待；补齐本地库/云端库的回滚、拉取、合并模型 | [→ 打开](#sec-20260428-confirm-gate) |
@@ -44,6 +45,70 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260430-runtime-sync-hardening"></a>
+## 2026-04-30 Runtime Sync 真源、缓存防误改、SessionStart 反馈索引兼容一起补齐
+
+> **发版** `sp-v5.0.7-xia-2026-04-30-01` — 核心：把 `Runtime Sync` 补到可发布状态，覆盖三块此前只在本机落地、未正式发版的改动：维护手册、runtime cache 编辑防线，以及 `check-evolution` 对表格格式 feedback index 的兼容修复。
+
+### 结论
+
+这一版把 Xia 本地已经在用、但还没正式发版的 Runtime Sync 相关能力集中补齐到 GitHub 发布线：
+
+1. **维护路径更清楚**：新增 `SUPERPOWERS_RUNTIME_SYNC_MANUAL.md`，把 `fork -> overlay -> installed cache` 的职责、发布顺序、回滚和 tag 规范写成可执行说明。
+2. **收尾动作更完整**：`finishing-a-development-branch` 现在会显式处理 remote branch cleanup 和最终验证，减少“本地删了、远端还留着”的脏尾巴。
+3. **runtime cache 不再能被误当真源直接改**：新增 `superpowers-cache-edit-guard`，在 fork 未对齐时阻止直接改 installed cache。
+4. **SessionStart 不再被 feedback index 表格格式搞崩**：`check-evolution` 现在能正确读取 Markdown 表格版 `FEEDBACK-INDEX.md`，并对 `rg` 0 命中做安全处理，不再在 `set -euo pipefail` 下静默 `exit 1`。
+
+### 变更范围
+
+- **runtime docs**
+  - `SUPERPOWERS_RUNTIME_SYNC_MANUAL.md`
+    - 固化 Runtime Sync 的真源顺序、部署命令、发布与回滚规范
+
+- **skills**
+  - `skills/finishing-a-development-branch/SKILL.md`
+    - 加入 remote branch cleanup
+    - 把末尾步骤提升为 final verification
+
+- **hooks**
+  - `hooks/superpowers-cache-edit-guard`
+    - 阻止在 fork 未对齐时直接改 runtime cache
+  - `hooks/hooks.json`
+  - `hooks/hooks-cursor.json`
+    - 注册 runtime cache edit guard
+  - `hooks/check-evolution`
+    - 兼容表格格式 `.claude/feedback/FEEDBACK-INDEX.md`
+    - 为 legacy `rg` 计数加 0 命中安全兜底
+
+- **tests**
+  - `tests/claude-code/test-check-evolution.sh`
+    - 覆盖表格格式 feedback index 与 SessionStart payload 回归
+
+### 验证
+
+- fork 侧本地 shell tests
+  - `bash tests/claude-code/test-active-pr-resolution.sh`
+  - `bash tests/claude-code/test-check-evolution.sh`
+  - `bash tests/claude-code/test-enforce-acceptance-order-trigger.sh`
+  - `bash tests/claude-code/test-mark-test-acceptance-needed.sh`
+  - `bash tests/claude-code/test-superpowers-runtime-sync-reminder.sh`
+  - `bash tests/claude-code/test-stop-gate-quality-fields.sh`
+  - `bash tests/claude-code/test-stop-gate-user-confirm-reminder.sh`
+
+- Runtime Sync 链路
+  - `docs/scripts/sync-superpowers-fork.sh capture`
+  - `docs/scripts/sync-superpowers-fork.sh status`
+  - `docs/scripts/sync-superpowers-fork.sh deploy latest`
+
+- installed cache smoke test
+  - `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/hooks/run-hook.cmd check-evolution`
+
+### 审查 / 风险
+
+- 这次发布把此前已在 Xia 本机部署、但还未进入 `sp-v5.0.7-xia-*` tag 线的 Runtime Sync 相关改动一起纳入正式版本；因此正文刻意按“发布补齐”而不是“单点热修”来记。
+- 在当前 Codex 沙箱里，无法完成真正带登录态的 Claude CLI 黑盒发版验证：`claude --print` 会受 `session-env` 目录权限和 `/login` 状态影响。
+- 但 hook 本体已经在 installed cache 路径下直接 smoke test 通过，且 Xia 侧已确认真实 Claude Code CLI 的 `SessionStart:startup hook error` 现象消失。
 
 <a id="sec-20260428-acceptance-false-positive"></a>
 ## 2026-04-28 验收顺序 hook 不再误拦普通对话
