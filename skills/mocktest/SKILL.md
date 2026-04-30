@@ -48,6 +48,7 @@ Optional human notes in `Vx.y.z-test.md` outside that section (e.g. PR coverage 
 
 - command source path
 - mocked scenario set
+- **build version (from `src/.output/chrome-mv3/manifest.json` or `src/package.json` — must report at startup before any test execution)**
 - checks executed
 - pass/fail summary
 - defect evidence links/snippets

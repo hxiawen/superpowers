@@ -53,6 +53,7 @@ Do not use PR `tdd-log` for these hook-visible status lines.
 ## Minimum Result Fields
 
 - command source path
+- **build version (from `src/.output/chrome-mv3/manifest.json` or `src/package.json` — must report at startup before any test execution)**
 - device matrix
 - executed checks
 - pass/fail summary
