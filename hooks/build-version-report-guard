@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Stop hook: verify that mocktest/devicetest/autotest reported build version.
+# EP-004-ESCALATION structural defense (Path B).
+#
+# Checks for a version-report marker file written by the test commands.
+# If a test acceptance status was recorded but no version was reported,
+# blocks completion until the agent reports the version.
+
+set -euo pipefail
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+STATUS_FILE="$PROJECT_DIR/.claude/.test-acceptance-status"
+VERSION_MARKER="$PROJECT_DIR/.claude/.build-version-reported"
+
+# Only enforce when acceptance tests were recorded
+if [ ! -f "$STATUS_FILE" ]; then
+  exit 0
+fi
+
+STATE="$(tr -d '[:space:]' < "$STATUS_FILE" 2>/dev/null || true)"
+if [ "$STATE" != "needs_acceptance" ] && [ "$STATE" != "clean" ]; then
+  exit 0
+fi
+
+# If no acceptance was needed, skip
+if [ "$STATE" = "clean" ] && [ ! -f "$VERSION_MARKER" ]; then
+  # Clean status without version marker could mean tests weren't run
+  exit 0
+fi
+
+# Check if version marker exists
+if [ -f "$VERSION_MARKER" ]; then
+  # Marker exists — check if it has a version string
+  MARKER_CONTENT="$(tr -d '[:space:]' < "$VERSION_MARKER" 2>/dev/null || true)"
+  if [ -n "$MARKER_CONTENT" ]; then
+    exit 0
+  fi
+fi
+
+# No version marker but acceptance tests were recorded — block
+emit_block_json_with_meta \
+  "mocktest/devicetest/autotest 验收已执行但未报告构建版本号。必须从 manifest.json 读取并报告完整版本号（如 0.1.10.42）后才可完成。命令：grep '\"version\"' src/.output/chrome-mv3/manifest.json" \
+  "false" \
+  "agent" \
+  "agent_remediation_required" \
+  "agent_fix_and_retry_stop_gate"
+
+exit 2
