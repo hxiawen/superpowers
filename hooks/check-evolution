@@ -13,13 +13,78 @@ escape_for_json() {
   printf '%s' "$s"
 }
 
+count_table_rows() {
+  local file="$1"
+  awk -F'|' '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    /^\|/ {
+      topic = trim($2)
+      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
+        next
+      }
+      count++
+    }
+    END {
+      print count + 0
+    }
+  ' "$file"
+}
+
+count_table_candidates() {
+  local file="$1"
+  awk -F'|' '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    /^\|/ {
+      topic = trim($2)
+      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
+        next
+      }
+      occurrences = trim($4)
+      status = trim($5)
+      if (status ~ /candidate/ || occurrences + 0 >= 2) {
+        count++
+      }
+    }
+    END {
+      print count + 0
+    }
+  ' "$file"
+}
+
+count_legacy_matches() {
+  local pattern="$1"
+  local file="$2"
+  local matches
+
+  matches="$(rg "$pattern" "$file" -n --no-heading 2>/dev/null || true)"
+  if [ -z "$matches" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  printf '%s\n' "$matches" | wc -l | tr -d '[:space:]'
+}
+
 FEEDBACK_INDEX="${CLAUDE_PROJECT_DIR:-}/.claude/feedback/FEEDBACK-INDEX.md"
 if [ -z "${CLAUDE_PROJECT_DIR:-}" ] || [ ! -f "$FEEDBACK_INDEX" ]; then
   exit 0
 fi
 
-TOTAL="$(rg "^- \\[" "$FEEDBACK_INDEX" -n --no-heading 2>/dev/null | wc -l | tr -d '[:space:]')"
-CANDIDATES="$(rg "status:\\s*candidate|occurrences:\\s*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX" -n --no-heading 2>/dev/null | wc -l | tr -d '[:space:]')"
+TOTAL="$(count_table_rows "$FEEDBACK_INDEX")"
+if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+  CANDIDATES="$(count_table_candidates "$FEEDBACK_INDEX")"
+else
+  TOTAL="$(count_legacy_matches "^- \\[" "$FEEDBACK_INDEX")"
+  CANDIDATES="$(count_legacy_matches "status:\s*candidate|occurrences:\s*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX")"
+fi
 
 TOTAL="${TOTAL:-0}"
 CANDIDATES="${CANDIDATES:-0}"
