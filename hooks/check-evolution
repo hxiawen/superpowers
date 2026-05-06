@@ -3,109 +3,25 @@
 
 set -euo pipefail
 
-escape_for_json() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\r'/\\r}"
-  s="${s//$'\t'/\\t}"
-  printf '%s' "$s"
-}
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/evolution-index-common
+. "$HOOK_DIR/evolution-index-common"
 
-count_table_rows() {
-  local file="$1"
-  awk -F'|' '
-    function trim(s) {
-      sub(/^[[:space:]]+/, "", s)
-      sub(/[[:space:]]+$/, "", s)
-      return s
-    }
-    /^\|/ {
-      topic = trim($2)
-      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
-        next
-      }
-      count++
-    }
-    END {
-      print count + 0
-    }
-  ' "$file"
-}
-
-count_table_candidates() {
-  local file="$1"
-  awk -F'|' '
-    function trim(s) {
-      sub(/^[[:space:]]+/, "", s)
-      sub(/[[:space:]]+$/, "", s)
-      return s
-    }
-    /^\|/ {
-      topic = trim($2)
-      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
-        next
-      }
-      occurrences = trim($4)
-      status = trim($5)
-      if (status ~ /candidate/ || occurrences + 0 >= 2) {
-        count++
-      }
-    }
-    END {
-      print count + 0
-    }
-  ' "$file"
-}
-
-count_legacy_matches() {
-  local pattern="$1"
-  local file="$2"
-  local matches
-
-  matches="$(rg "$pattern" "$file" -n --no-heading 2>/dev/null || true)"
-  if [ -z "$matches" ]; then
-    printf '0\n'
-    return 0
-  fi
-
-  printf '%s\n' "$matches" | wc -l | tr -d '[:space:]'
-}
-
-FEEDBACK_INDEX="${CLAUDE_PROJECT_DIR:-}/.claude/feedback/FEEDBACK-INDEX.md"
-if [ -z "${CLAUDE_PROJECT_DIR:-}" ] || [ ! -f "$FEEDBACK_INDEX" ]; then
+if ! evo_load_index_stats; then
   exit 0
 fi
 
-TOTAL="$(count_table_rows "$FEEDBACK_INDEX")"
-if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
-  CANDIDATES="$(count_table_candidates "$FEEDBACK_INDEX")"
-else
-  TOTAL="$(count_legacy_matches "^- \\[" "$FEEDBACK_INDEX")"
-  CANDIDATES="$(count_legacy_matches "status:\s*candidate|occurrences:\s*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX")"
-fi
-
-TOTAL="${TOTAL:-0}"
-CANDIDATES="${CANDIDATES:-0}"
-
-if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
-  if [ "$CANDIDATES" -gt 0 ] 2>/dev/null; then
-    printf 'candidate\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
-  else
-    printf 'needs_keeper\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
-  fi
-
-  reminder="Evolution check: found ${TOTAL} feedback entries in .claude/feedback/FEEDBACK-INDEX.md. Candidate signals detected: ${CANDIDATES}. Dispatch evolution-keeper to review candidates, produce proposals, require explicit human confirm/skip, and ensure docs/LESSONS.md includes adoption status (pending/adopted/not_adopted)."
-  reminder_escaped="$(escape_for_json "$reminder")"
+if [ "$EVO_TOTAL" -gt 0 ] 2>/dev/null; then
+  evo_write_required_marker
+  reminder="$(evo_reminder_text)"
+  reminder_escaped="$(evo_escape_for_json "$reminder")"
 
   if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
     printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
   elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
     printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$reminder_escaped"
   else
-    printf '{\n  "additionalContext": "%s"\n}\n' "$reminder_escaped"
+    printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
   fi
 fi
 

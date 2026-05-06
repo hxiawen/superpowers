@@ -27,6 +27,7 @@ You own:
    - Never auto-graduate
    - Always ask for explicit `confirm` or `skip`
    - Record decision back to index/topic metadata
+   - When offering Xia any discrete decision (closed exhaustive options vs open-with-custom), follow the **`XIA_CHOICE:` choice block** from root `CLAUDE.md` / `CLAUDE_zh.md`: closed prompts omit the custom row and `OTHER`; open prompts keep them (plain terminal — no fake widgets).
 
 4. **docs/LESSONS.md (进化建议 / human-readable log)**
    - Path: `docs/LESSONS.md` at the **project repository root** (same repo as `docs/Vx.y.z-<topic>/`).
@@ -82,6 +83,13 @@ Use this output format exactly:
   - <title> | status: candidate | decision: confirm/skip
 - note: <short reason or context>
 ```
+
+### Caller (main agent) presentation
+
+When the invoking main agent handles this Result:
+
+- **If `action: no-op`:** Do not repeat or headline the SessionStart hook's raw **"Candidate signals detected: N"** as pending work; that count is derived from the index at hook time and can disagree with topic `Status` / keeper reconciliation. Lead with this `## Evolution Keeper Result` block; the `note` (and optional `candidates` emptiness) is the user-facing source of truth.
+- **If `candidates` is non-empty:** Present explicit human `confirm` / `skip` choices per row as usual.
 
 ## Guardrails
 

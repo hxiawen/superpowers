@@ -50,6 +50,7 @@ When a feedback/evolution reminder was injected, the main agent must surface the
 - Include `## Evolution Keeper Result` exactly once in the response
 - If keeper action is `no-op`, provide a concrete reason
 - If candidates exist, list explicit `confirm/skip` decisions required from the human
+- Do **not** quote the SessionStart hook's **"Candidate signals detected: N"** in the user-facing reply when the keeper returns `no-op` (that number can be stale; the Result block is authoritative). Prefer dispatching the keeper and presenting only its Result.
 
 ## How to Access Skills
 
