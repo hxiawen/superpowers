@@ -79,6 +79,10 @@ if [ -z "$PROJECT_DIR" ]; then
   exit 0
 fi
 
+if superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
+  exit 0
+fi
+
 set +e
 LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
 _RES_V=$?

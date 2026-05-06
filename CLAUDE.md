@@ -102,6 +102,7 @@ Canonical labels: `Brainstorm -> Spec -> Plan -> TDD -> Subagent Development -> 
 - Version root: `docs/Vx.y.z-<topic>/` (hooks also accept `docs/vx.y.z-<topic>/`; prefer **`V`** for new work)
 - Topic naming examples: `v0.1.4-scroll-highlight`, `v0.1.5-panel-ui`
 - Required version files: `Vx.y.z-design.md`, `Vx.y.z-spec.md`, `Vx.y.z-plan.md`, `Vx.y.z-changelog.md`, `Vx.y.z-decisions.md`, `Vx.y.z-test.md` (see `version-test-template.md` for **`## Acceptance status (hooks)`**)
+- **`Vx.y.z-spec.md` must also include `## Superpowers pipeline (hooks)`** with one line `Full extension acceptance pipeline: Yes` or `No` (user answers during brainstorming). **No** waives extension test-order enforcement on submit, manifest build reporting at Stop, and `src/package.json` vs shipped manifest drift checks; **Figma Live Design Sync** still follows whether the plan includes a Design Sync PR. `hooks/spec-gate-precheck` requires this section before `/writing-plans`.
 - Required PR files:
   - `Vx.y.z-PRn-tdd-log.md`
   - `Vx.y.z-PRn-subagent-summary.md`

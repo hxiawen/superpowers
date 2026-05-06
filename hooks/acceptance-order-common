@@ -134,15 +134,13 @@ validate_order_in_acceptance_section() {
     emit_block_json "${scope} 缺少「## Acceptance status (hooks)」小节（标题须逐字一致，见 version-test-template）。" "$status_fallback"
     return 1
   fi
-  # Status tokens: English + 中文
-  # Status is mandatory (not keyword-only); optional ? would let bare "autotest" match and defeat the gate.
-  local status_tokens='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)'
-  auto_line="$(first_match_line "autotest[[:space:]:：-]*${status_tokens}" "$tmp")"
-  mock_line="$(first_match_line "mocktest[[:space:]:：-]*${status_tokens}" "$tmp")"
-  device_line="$(first_match_line "devicetest[[:space:]:：-]*${status_tokens}" "$tmp")"
+  # Status tokens: English + 中文 + waived (N/A…) for no-extension versions
+  auto_line="$(first_match_line "autotest[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
+  mock_line="$(first_match_line "mocktest[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
+  device_line="$(first_match_line "devicetest[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
   design_sync_line=""
   if [ "$design_sync_required" = "true" ]; then
-    design_sync_line="$(first_match_line "(figma-live-sync|figma_live_sync|figma live sync|codetofigma)[[:space:]:：-]*${status_tokens}" "$tmp")"
+    design_sync_line="$(first_match_line "(figma-live-sync|figma_live_sync|figma live sync|codetofigma)[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
   fi
   rm -f "$tmp"
 
@@ -169,11 +167,18 @@ validate_order_in_acceptance_section() {
   return 0
 }
 
+# Machine tokens inside "## Acceptance status (hooks)" (validate_order + keyword probes).
+# Includes waived markers for web-only / no-extension versions (EP-004 follow-up).
+ACCEPTANCE_STATUS_ORDER_TOKENS='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定|N/A|n/a|not[[:space:]]+applicable|不适用|无需)'
+
+# Stages considered "settled" for next_expected (excludes pending; includes waived).
+ACCEPTANCE_STATUS_NON_PENDING_TOKENS='(pass|fail|blocked|skip|green|red|通过|失败|阻塞|跳过|N/A|n/a|not[[:space:]]+applicable|不适用|无需)'
+
 has_acceptance_status_keyword() {
   local keyword="$1"
   local file="$2"
   local status_pattern
-  status_pattern="${keyword}[[:space:]:：-]*(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)"
+  status_pattern="${keyword}[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}"
   rg -qi "$status_pattern" "$file"
 }
 
@@ -181,7 +186,7 @@ has_completed_acceptance_status_keyword() {
   local keyword="$1"
   local file="$2"
   local status_pattern
-  status_pattern="${keyword}[[:space:]:：-]*(pass|fail|blocked|skip|green|red|通过|失败|阻塞|跳过)"
+  status_pattern="${keyword}[[:space:]:：-]*${ACCEPTANCE_STATUS_NON_PENDING_TOKENS}"
   rg -qi "$status_pattern" "$file"
 }
 
@@ -263,6 +268,51 @@ has_case_id_in_file() {
   rg -q "\\b(T|TC)-[0-9]{3}\\b" "$file"
 }
 
+# True when the value after autotest:/mocktest:/devicetest: means extension env tests were not run
+# and no manifest build version needs to be echoed (build-version-report-guard).
+acceptance_status_value_is_manifest_waived() {
+  local raw="$1"
+  local v lower
+  v="$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if [ -z "$v" ]; then
+    return 1
+  fi
+  lower="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    n/a|n/a*|not\ applicable|not\ applicable*) return 0 ;;
+    不适用*|无需*) return 0 ;;
+    skip|skip*) return 0 ;;
+    跳过|跳过*) return 0 ;;
+  esac
+  if [ "$lower" = "na" ]; then
+    return 0
+  fi
+  return 1
+}
+
+acceptance_env_triple_waived_no_manifest_version_report() {
+  local version_test="$1"
+  local tmp kw val
+  tmp=$(mktemp)
+  if ! extract_acceptance_status_to_file "$version_test" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  for kw in autotest mocktest devicetest; do
+    val="$(rg -i -m 1 -or '$1' "^[[:space:]]*[-*]?[[:space:]]*${kw}[[:space:]:：-]+(.+)$" "$tmp" 2>/dev/null || true)"
+    if [ -z "$val" ]; then
+      rm -f "$tmp"
+      return 1
+    fi
+    if ! acceptance_status_value_is_manifest_waived "$val"; then
+      rm -f "$tmp"
+      return 1
+    fi
+  done
+  rm -f "$tmp"
+  return 0
+}
+
 resolve_latest_version_dir() {
   local project_dir="$1"
   local docs="$project_dir/docs"
@@ -298,6 +348,31 @@ plan_has_design_sync() {
     return 1
   fi
   rg -qi '(Figma Live Design Sync|figma-live-sync|figma_live_sync|Design Sync|codetofigma)' "$plan_file"
+}
+
+# Machine-readable in Vx.y.z-spec.md under "## Superpowers pipeline (hooks)" (exact H2).
+# Returns 0 iff the section declares extension/lab pipeline waived (No / 否).
+# Missing section or Yes → returns 1 (full pipeline required; conservative).
+superpowers_extension_pipeline_waived() {
+  local project_dir="$1"
+  local latest vprefix specfile section
+  latest="$(resolve_latest_version_dir "$project_dir")"
+  [ -n "$latest" ] || return 1
+  vprefix="$(basename "$latest" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  specfile="${latest}/${vprefix}-spec.md"
+  [ -f "$specfile" ] || return 1
+  if ! rg -q '^## Superpowers pipeline \(hooks\)$' "$specfile" 2>/dev/null; then
+    return 1
+  fi
+  section="$(mktemp)"
+  awk '/^## Superpowers pipeline \(hooks\)$/{p=1;next} p && /^## /{exit} p' "$specfile" >"$section"
+  if ! rg -qi '^Full extension acceptance pipeline[[:space:]:：]*[[:space:]]*(no|n|false)([[:space:][:punct:]].*)?$' "$section" && \
+     ! rg -qi '^完整扩展验收流程[[:space:]:：]*[[:space:]]*(否|不)([[:space:][:punct:]].*)?$' "$section"; then
+    rm -f "$section"
+    return 1
+  fi
+  rm -f "$section"
+  return 0
 }
 
 resolve_active_pr_dir() {

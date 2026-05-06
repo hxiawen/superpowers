@@ -6,6 +6,7 @@
 ## Maintenance Timing (Mandatory)
 
 - Create this file when the version is initialized; update it as PRs close.
+- **`Vx.y.z-spec.md`** must contain **`## Superpowers pipeline (hooks)`** with `Full extension acceptance pipeline: Yes` or `No` before `/writing-plans` (see `brainstorming` checklist). **No** skips extension test-order / manifest / drift hooks only; **Figma Live Design Sync** still follows the plan.
 - The **only** machine source for `autotest` / `mocktest` / `devicetest` status and order, plus `figma-live-sync` when the plan includes `Figma Live Design Sync`, is the section **`## Acceptance status (hooks)`** below (title must be exact; no variants).
 - Maintain `Coverage Matrix` / `Expectation Index` / `Known Blind Spots` and detailed cases throughout; do not wait until the last minute to add structure.
 

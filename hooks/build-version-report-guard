@@ -30,6 +30,23 @@ if [ "$STATE" != "needs_acceptance" ] && [ "$STATE" != "clean" ]; then
   exit 0
 fi
 
+if superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
+  exit 0
+fi
+
+# Pure webapp / no-extension versions: triple waived in Vx.y.z-test.md → no manifest to report.
+set +e
+LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
+set -e
+if [ -n "$LATEST_VERSION" ]; then
+  VERSION_BASENAME="$(basename "$LATEST_VERSION")"
+  VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  VERSION_TEST="$LATEST_VERSION/${VERSION_PREFIX}-test.md"
+  if [ -f "$VERSION_TEST" ] && acceptance_env_triple_waived_no_manifest_version_report "$VERSION_TEST"; then
+    exit 0
+  fi
+fi
+
 # If no acceptance was needed, skip
 if [ "$STATE" = "clean" ] && [ ! -f "$VERSION_MARKER" ]; then
   # Clean status without version marker could mean tests weren't run

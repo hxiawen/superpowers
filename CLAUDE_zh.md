@@ -102,6 +102,7 @@ docs/
 - 版本根目录：`docs/Vx.y.z-<topic>/`（钩子也接受 `docs/vx.y.z-<topic>/`；新工作优先使用大写 **`V`**）
 - 主题命名示例：`v0.1.4-scroll-highlight`、`v0.1.5-panel-ui`
 - 必备版本级文件：`Vx.y.z-design.md`、`Vx.y.z-spec.md`、`Vx.y.z-plan.md`、`Vx.y.z-changelog.md`、`Vx.y.z-decisions.md`、`Vx.y.z-test.md`（**`## Acceptance status (hooks)`** 等见 `version-test-template.md`）
+- **`Vx.y.z-spec.md` 还须含 `## Superpowers pipeline (hooks)`**：一行 `Full extension acceptance pipeline: Yes` 或 `No`（brainstorming 问用户后写入）。**No** 时 hooks 豁免扩展三测顺序门、Stop 上 manifest 构建号门、`src/package.json` 与产物 manifest 漂移门；**不**影响 Figma Live Design Sync（仍由 plan 是否含 Design Sync PR 决定）。进入 `/writing-plans` 前由 `hooks/spec-gate-precheck` 校验该小节。
 - 必备 PR 级文件：
   - `Vx.y.z-PRn-tdd-log.md`
   - `Vx.y.z-PRn-subagent-summary.md`

@@ -41,8 +41,9 @@ You MUST create a task for each of these items and complete them in order:
 13. **Initialize governance docs** — create/update `docs/Vx.y.z-<topic>/Vx.y.z-changelog.md` and `docs/Vx.y.z-<topic>/Vx.y.z-decisions.md`
 14. **spec-gate self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 15. **Spec precheck output (mandatory)** — before writing-plans, ensure spec contains minimum code reconnaissance: affected paths, immutable constraints, and Figma diff notes
-16. **User reviews written spec** — ask user to review the spec file before proceeding
-17. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+16. **Superpowers pipeline (hooks) (mandatory)** — ask the user whether this version runs the **full extension / lab acceptance pipeline** (ordered `autotest → mocktest → devicetest`, manifest/build alignment checks at Stop). Explain that **No** skips those hooks only; PR docs, version test template quality, spec confirm, evolution, and **Figma Live Design Sync** (when the plan includes it) stay as today. Append to `Vx.y.z-spec.md` an exact H2 `## Superpowers pipeline (hooks)` and one line: `Full extension acceptance pipeline: Yes` or `Full extension acceptance pipeline: No` (or Chinese: `完整扩展验收流程：是` / `完整扩展验收流程：否`). `hooks/spec-gate-precheck` requires this before `/writing-plans`.
+17. **User reviews written spec** — ask user to review the spec file before proceeding
+18. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -136,6 +137,22 @@ Step 4 — Round 3 preamble (use **once** right after Step 3 when **any** of `PR
 > If your team routes locations through a product owner, pull them in or relay their answer here.
 
 Skip this preamble when **only** `Idea` is selected (no PRD / Design Draft / Interactive Demo) — go straight to clarifying questions.
+
+Checklist step 16 — Superpowers pipeline / hooks (mandatory, before user spec review):
+
+> Does this version run the **full extension + lab acceptance pipeline** (ordered `autotest → mocktest → devicetest`, plus manifest/build checks at Stop)?
+> - **Y** — Yes → hooks enforce the normal extension gates.
+> - **N** — No → hooks skip extension test order, manifest report at Stop, and package-vs-manifest drift only; PR docs, version test template, spec confirm, evolution, and **Figma Live Design Sync** (when the plan includes it) are unchanged.
+>
+> After the user answers, append to `Vx.y.z-spec.md` (exact heading, one status line):
+>
+> ```markdown
+> ## Superpowers pipeline (hooks)
+>
+> Full extension acceptance pipeline: Yes
+> ```
+>
+> or `Full extension acceptance pipeline: No` (or `完整扩展验收流程：是` / `完整扩展验收流程：否`). Required before `/writing-plans` (`hooks/spec-gate-precheck`).
 
 **Clarification quality checkpoints (minimum bar):**
 

@@ -226,13 +226,15 @@ fi
 
 # Browser-extension artifact version gate (best-effort):
 # prevent devicetest validating stale production bundles.
-SRC_PKG_JSON="$PROJECT_DIR/src/package.json"
-OUTPUT_MANIFEST="$PROJECT_DIR/.output/chrome-mv3/manifest.json"
-if [ -f "$SRC_PKG_JSON" ] && [ -f "$OUTPUT_MANIFEST" ] && command -v jq >/dev/null 2>&1; then
-  SRC_VERSION="$(jq -r '.version // empty' "$SRC_PKG_JSON" 2>/dev/null || true)"
-  MANIFEST_VERSION="$(jq -r '.version // empty' "$OUTPUT_MANIFEST" 2>/dev/null || true)"
-  if [ -n "$SRC_VERSION" ] && [ -n "$MANIFEST_VERSION" ] && [ "$SRC_VERSION" != "$MANIFEST_VERSION" ]; then
-    block_and_exit "生产构建版本号与源码版本号不一致（src/package.json=${SRC_VERSION}, manifest=${MANIFEST_VERSION}）。请先重建产物并校正版本。"
+if ! superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
+  SRC_PKG_JSON="$PROJECT_DIR/src/package.json"
+  OUTPUT_MANIFEST="$PROJECT_DIR/.output/chrome-mv3/manifest.json"
+  if [ -f "$SRC_PKG_JSON" ] && [ -f "$OUTPUT_MANIFEST" ] && command -v jq >/dev/null 2>&1; then
+    SRC_VERSION="$(jq -r '.version // empty' "$SRC_PKG_JSON" 2>/dev/null || true)"
+    MANIFEST_VERSION="$(jq -r '.version // empty' "$OUTPUT_MANIFEST" 2>/dev/null || true)"
+    if [ -n "$SRC_VERSION" ] && [ -n "$MANIFEST_VERSION" ] && [ "$SRC_VERSION" != "$MANIFEST_VERSION" ]; then
+      block_and_exit "生产构建版本号与源码版本号不一致（src/package.json=${SRC_VERSION}, manifest=${MANIFEST_VERSION}）。请先重建产物并校正版本。"
+    fi
   fi
 fi
 

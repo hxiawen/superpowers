@@ -84,5 +84,22 @@ cat >"$TMP" <<'EOF'
 EOF
 assert_eq "$(next_expected_test_from_version "$TMP" "true")" "done" "legacy codetofigma remains accepted"
 
+cat >"$TMP" <<'EOF'
+## Acceptance status (hooks)
+- autotest: N/A (webapp only, no extension code)
+- mocktest: N/A
+- devicetest: N/A
+EOF
+assert_eq "$(next_expected_test_from_version "$TMP" "false")" "done" "all N/A without design sync is done"
+
+cat >"$TMP" <<'EOF'
+## Acceptance status (hooks)
+- autotest: N/A
+- mocktest: N/A
+- devicetest: N/A
+- figma-live-sync: pending
+EOF
+assert_eq "$(next_expected_test_from_version "$TMP" "true")" "figma-live-sync" "N/A triple still expects figma-live-sync when planned"
+
 echo ""
 echo "=== enforce acceptance next_expected checks passed ==="
