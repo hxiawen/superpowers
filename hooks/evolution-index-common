@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Shared FEEDBACK-INDEX stats + reminder text for check-evolution and farewell-git-clean-reminder.
+
+evo_escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+evo_count_table_rows() {
+  local file="$1"
+  awk -F'|' '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    /^\|/ {
+      topic = trim($2)
+      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
+        next
+      }
+      count++
+    }
+    END {
+      print count + 0
+    }
+  ' "$file"
+}
+
+evo_count_table_candidates() {
+  local file="$1"
+  awk -F'|' '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function lc(s) {
+      return tolower(s)
+    }
+    BEGIN { count = 0 }
+    /^\|/ {
+      topic = trim($2)
+      if (topic == "" || topic == "Topic" || topic ~ /^-+$/) {
+        next
+      }
+      occurrences = trim($4) + 0
+      st = lc(trim($5))
+      # Only rows still awaiting human evolution decision: pending | candidate (prefix match),
+      # occurrences threshold met. Adopted / recorded / closed rows must not inflate the hook count.
+      if (occurrences < 2) {
+        next
+      }
+      if (st ~ /^adopted(\s|\(|$)/ || st ~ /^not_adopted(\s|\(|$)/ || st ~ /^not adopted(\s|\(|$)/ || st ~ /^recorded(\s|\(|$)/) {
+        next
+      }
+      if (st ~ /^candidate(\s|\(|$)/ || st ~ /^pending(\s|\(|$)/) {
+        count++
+      }
+    }
+    END {
+      print count + 0
+    }
+  ' "$file"
+}
+
+evo_count_legacy_matches() {
+  local pattern="$1"
+  local file="$2"
+  local matches
+
+  matches="$(rg "$pattern" "$file" -n --no-heading 2>/dev/null || true)"
+  if [ -z "$matches" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  printf '%s\n' "$matches" | wc -l | tr -d '[:space:]'
+}
+
+# Sets EVO_TOTAL, EVO_CANDIDATES, EVO_INDEX_PATH. Returns 0 if index file exists and was read.
+evo_load_index_stats() {
+  EVO_INDEX_PATH="${CLAUDE_PROJECT_DIR:-}/.claude/feedback/FEEDBACK-INDEX.md"
+  EVO_TOTAL=0
+  EVO_CANDIDATES=0
+  if [ -z "${CLAUDE_PROJECT_DIR:-}" ] || [ ! -f "$EVO_INDEX_PATH" ]; then
+    return 1
+  fi
+
+  EVO_TOTAL="$(evo_count_table_rows "$EVO_INDEX_PATH")"
+  if [ "$EVO_TOTAL" -gt 0 ] 2>/dev/null; then
+    EVO_CANDIDATES="$(evo_count_table_candidates "$EVO_INDEX_PATH")"
+  else
+    EVO_TOTAL="$(evo_count_legacy_matches "^- \\[" "$EVO_INDEX_PATH")"
+    # Legacy index: count explicit status lines only (do not treat occurrences>=2 alone as a candidate).
+    EVO_CANDIDATES="$(evo_count_legacy_matches "status:\s*(candidate|pending)\b" "$EVO_INDEX_PATH")"
+  fi
+
+  EVO_TOTAL="${EVO_TOTAL:-0}"
+  EVO_CANDIDATES="${EVO_CANDIDATES:-0}"
+  return 0
+}
+
+evo_write_required_marker() {
+  if [ "${EVO_TOTAL:-0}" -le 0 ] 2>/dev/null; then
+    return 0
+  fi
+  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
+  if [ "${EVO_CANDIDATES:-0}" -gt 0 ] 2>/dev/null; then
+    printf 'candidate\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
+  else
+    printf 'needs_keeper\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
+  fi
+}
+
+evo_reminder_core() {
+  printf '%s' "Evolution check: found ${EVO_TOTAL} feedback entries in .claude/feedback/FEEDBACK-INDEX.md. Candidate signals detected: ${EVO_CANDIDATES}. Dispatch evolution-keeper to review candidates, produce proposals, require explicit human confirm/skip, and ensure docs/LESSONS.md includes adoption status (pending/adopted/not_adopted)."
+}
+
+# SessionStart / check-evolution（原文案）
+evo_reminder_text() {
+  evo_reminder_core
+}
+
+# 告别口令：强调本轮收尾，不要拖到下次进会话
+evo_reminder_text_farewell() {
+  printf '%s%s' "$(evo_reminder_core)" " Complete this in the current turn before your final reply; do not defer to the next SessionStart."
+}
+
+evo_reminder_text_empty_index() {
+  printf '%s' "Evolution closure: FEEDBACK-INDEX has no tracked rows. If this session produced feedback or evolution signals, dispatch evolution-keeper now to record/close in .claude/feedback/ before ending — do not wait for the next session."
+}
+
+evo_reminder_text_no_index_file() {
+  printf '%s' "Evolution closure: no FEEDBACK-INDEX.md in this project (.claude/feedback/). If feedback was discussed this session, run the keeper workflow now if applicable; do not defer to SessionStart."
+}

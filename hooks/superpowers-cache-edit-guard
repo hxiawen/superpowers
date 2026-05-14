@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# PostToolUse hook: prevent direct edits to superpowers runtime cache
+# without corresponding change in the fork (EP-008 structural defense).
+#
+# When an Edit/Write targets a file under the installed plugin cache,
+# checks if the fork already has the same content. If not, blocks the edit
+# and instructs the agent to follow the fork-first flow.
+
+set -euo pipefail
+
+CACHE_BASE="${HOME}/.claude/plugins/cache/claude-plugins-official/superpowers"
+DEFAULT_FORK="/Users/harry/Documents/GitHub/superpowers-fork"
+FORK_ROOT="${SUPERPOWERS_FORK_ROOT:-$DEFAULT_FORK}"
+
+INPUT="$(cat || true)"
+
+escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+# No input or no jq — can't check, pass silently
+if [ -z "$INPUT" ] || ! command -v jq >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Find the latest installed version directory
+latest_version=""
+for d in "$CACHE_BASE"/*/; do
+  [ -d "$d" ] || continue
+  v="$(basename "$d")"
+  if [ -z "$latest_version" ] || [ "$v" \> "$latest_version" ]; then
+    latest_version="$v"
+  fi
+done
+if [ -z "$latest_version" ]; then
+  exit 0
+fi
+
+cache_prefix="$CACHE_BASE/$latest_version"
+
+# Extract all file paths from the tool call input
+found_cache_edit="false"
+rel_path=""
+
+while IFS= read -r p; do
+  [ -z "$p" ] && continue
+  # Check if path is under the cache
+  case "$p" in
+    "$cache_prefix"/*)
+      found_cache_edit="true"
+      rel_path="${p#$cache_prefix/}"
+      break
+      ;;
+  esac
+done < <(printf '%s' "$INPUT" | jq -r '.. | objects | (.path? // .file_path? // .filePath? // .notebook_path? // empty)' 2>/dev/null || true)
+
+if [ "$found_cache_edit" = "false" ]; then
+  exit 0
+fi
+
+# Check fork
+fork_file="$FORK_ROOT/$rel_path"
+if [ ! -f "$fork_file" ]; then
+  msg="BLOCKED: Direct edit to runtime cache file '$rel_path' but fork has no corresponding file at '$fork_file'. Follow fork-first flow: edit in fork → capture → deploy. Override with emergency hotfix only if user explicitly approves."
+  msg_escaped="$(escape_for_json "$msg")"
+  printf '{"decision":"block","reason":"%s"}\n' "$msg_escaped"
+  exit 0
+fi
+
+# Fork file exists — check if content matches
+cache_file="$cache_prefix/$rel_path"
+if [ -f "$cache_file" ] && ! diff -q "$fork_file" "$cache_file" >/dev/null 2>&1; then
+  msg="BLOCKED: Runtime cache file '$rel_path' differs from fork. Fork must be updated first. Follow fork-first flow: edit in fork → capture → deploy."
+  msg_escaped="$(escape_for_json "$msg")"
+  printf '{"decision":"block","reason":"%s"}\n' "$msg_escaped"
+  exit 0
+fi
+
+# Fork is in sync or ahead — allow (the agent is likely deploying)
+exit 0

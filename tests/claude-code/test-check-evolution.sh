@@ -25,7 +25,14 @@ assert_contains() {
 }
 
 PROJECT_DIR="$(mktemp -d)"
-trap 'rm -rf "$PROJECT_DIR"' EXIT
+PROJECT_DIR2=""
+cleanup() {
+  rm -rf "$PROJECT_DIR"
+  if [ -n "${PROJECT_DIR2:-}" ]; then
+    rm -rf "$PROJECT_DIR2"
+  fi
+}
+trap cleanup EXIT
 mkdir -p "$PROJECT_DIR/.claude/feedback"
 
 cat > "$PROJECT_DIR/.claude/feedback/FEEDBACK-INDEX.md" <<'EOF'
@@ -67,6 +74,49 @@ if [ "$marker" != "candidate" ]; then
   exit 1
 fi
 echo "  [PASS] hook writes candidate marker"
+
+echo ""
+echo "=== Test: adopted / closed rows do not inflate candidate count ==="
+
+PROJECT_DIR2="$(mktemp -d)"
+mkdir -p "$PROJECT_DIR2/.claude/feedback"
+
+cat > "$PROJECT_DIR2/.claude/feedback/FEEDBACK-INDEX.md" <<'EOF'
+# Feedback Index
+
+## Topics
+
+| Topic | File | Occurrences | Status | First Seen | Last Seen |
+|-------|------|-------------|--------|------------|-----------|
+| topic-a | topic-a.md | 5 | adopted | 2026-04-28 | 2026-05-03 |
+| topic-b | topic-b.md | 3 | not_adopted | 2026-04-28 | 2026-05-03 |
+| topic-c | topic-c.md | 1 | recorded | 2026-04-28 | 2026-04-28 |
+EOF
+
+set +e
+output2="$(CLAUDE_PROJECT_DIR="$PROJECT_DIR2" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOK" 2>&1)"
+code2=$?
+set -e
+
+if [ "$code2" -ne 0 ]; then
+  echo "  [FAIL] hook should not fail on adopted-only table index"
+  echo "$output2"
+  exit 1
+fi
+echo "  [PASS] hook exits successfully (adopted fixture)"
+
+if [ -n "${output2//[[:space:]]/}" ]; then
+  echo "  [FAIL] expected empty stdout when there are zero actionable candidates"
+  printf '%s\n' "$output2"
+  exit 1
+fi
+echo "  [PASS] hook emits no SessionStart JSON when EVO_CANDIDATES is zero"
+
+if [ -f "$PROJECT_DIR2/.claude/.evolution-required" ]; then
+  echo "  [FAIL] expected no evolution-required marker when EVO_CANDIDATES is zero"
+  exit 1
+fi
+echo "  [PASS] hook clears evolution-required marker when no actionable candidates"
 
 echo ""
 echo "=== check-evolution checks passed ==="

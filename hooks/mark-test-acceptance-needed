@@ -36,12 +36,12 @@ normalize_tool_path() {
   esac
 }
 
-SPEC_OR_ASSERTION_SOURCE_PATTERN='(^|/)docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[Vv][0-9]+\.[0-9]+\.[0-9]+-(spec|test)\.md$|(^|/)(test|tests|e2e)/.*\.spec\.(ts|tsx|js|jsx)$'
-VERSION_TEST_FILE_PATTERN='(^|/)docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[Vv][0-9]+\.[0-9]+\.[0-9]+-test\.md$'
+SPEC_OR_ASSERTION_SOURCE_PATTERN='(^|/)docs/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-(spec|test)\.md$|(^|/)(test|tests|e2e)/.*\.spec\.(ts|tsx|js|jsx)$'
+VERSION_TEST_FILE_PATTERN='(^|/)docs/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-[^/]+/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-test\.md$|(^|/)docs/platform-release-test\.md$'
 NON_ACCEPTANCE_PATH_PATTERN='(^|/)(docs|design)/|(^|/)\.claude/'
 ACCEPTANCE_STATUS_HEADING_PATTERN='^[[:space:]]*##[[:space:]]+Acceptance status \(hooks\)[[:space:]]*$'
-ACCEPTANCE_STATUS_KEY_PATTERN='(autotest|mocktest|devicetest|figma-live-sync|figma_live_sync|figma live sync|codetofigma)'
-ACCEPTANCE_STATUS_VALUE_PATTERN='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定)'
+ACCEPTANCE_STATUS_KEY_PATTERN='(autotest|mocktest|devicetest|figma-live-sync|figma_live_sync|figma live sync|codetofigma|structure|build|git-history|git_history)'
+ACCEPTANCE_STATUS_VALUE_PATTERN='(pass|fail|blocked|skip|pending|green|red|通过|失败|阻塞|跳过|待定|N/A|n/a|not[[:space:]]+applicable|不适用|无需)'
 ACCEPTANCE_STATUS_LINE_PATTERN="^[[:space:]]*[-*]?[[:space:]]*${ACCEPTANCE_STATUS_KEY_PATTERN}[[:space:]]*[:：-][[:space:]]*${ACCEPTANCE_STATUS_VALUE_PATTERN}([[:space:]].*)?$"
 ACCEPTANCE_STATUS_KEY_ONLY_PATTERN="^[[:space:]]*[-*]?[[:space:]]*${ACCEPTANCE_STATUS_KEY_PATTERN}[[:space:]]*[:：-]?[[:space:]]*$"
 ACCEPTANCE_STATUS_VALUE_ONLY_PATTERN="^[[:space:]]*${ACCEPTANCE_STATUS_VALUE_PATTERN}[[:space:]]*$"
@@ -52,6 +52,33 @@ fi
 
 requires_acceptance="false"
 spec_changed="false"
+
+# For Write tool: full file content, no old/new diff.
+# Strategy: strip the Acceptance status section from both old and new,
+# then compare the rest. If identical, only status lines changed.
+write_is_status_only_for_version_test() {
+  local path="$1"
+  local new_content="$2"
+
+  if ! printf '%s' "$path" | rg -qi "$VERSION_TEST_FILE_PATTERN"; then
+    return 1
+  fi
+
+  if [ ! -f "$path" ]; then
+    return 1
+  fi
+
+  # Strip acceptance status section and compare line-by-line
+  local old_stripped new_stripped
+  old_stripped="$(sed '/^## Acceptance status (hooks)/,/^[[:space:]]*## /d' "$path" 2>/dev/null)"
+  new_stripped="$(printf '%s' "$new_content" | sed '/^## Acceptance status (hooks)/,/^[[:space:]]*## /d' 2>/dev/null)"
+
+  # Normalize: trim trailing newlines for comparison
+  old_stripped="$(printf '%s' "$old_stripped" | sed -e :a -e '/^\n*$/{$d;N;ba' 2>/dev/null)"
+  new_stripped="$(printf '%s' "$new_stripped" | sed -e :a -e '/^\n*$/{$d;N;ba' 2>/dev/null)"
+
+  [ "$old_stripped" = "$new_stripped" ]
+}
 
 snippet_is_acceptance_status_only() {
   local snippet="$1"
@@ -105,6 +132,7 @@ while IFS= read -r record; do
   candidate_path="$(printf '%s' "$record" | jq -r '.path // empty' 2>/dev/null || true)"
   old_snippet="$(printf '%s' "$record" | jq -r '.old // empty' 2>/dev/null || true)"
   new_snippet="$(printf '%s' "$record" | jq -r '.new // empty' 2>/dev/null || true)"
+  write_content="$(printf '%s' "$record" | jq -r '.content // empty' 2>/dev/null || true)"
   [ -z "$candidate_path" ] && continue
 
   normalized="$(normalize_tool_path "$PROJECT_DIR" "$candidate_path")"
@@ -114,7 +142,17 @@ while IFS= read -r record; do
   fi
 
   if printf '%s' "$normalized" | rg -qi "$SPEC_OR_ASSERTION_SOURCE_PATTERN"; then
-    if ! edit_is_status_only_for_version_test "$normalized" "$old_snippet" "$new_snippet"; then
+    if [ -n "$old_snippet" ] && [ -n "$new_snippet" ]; then
+      # Edit tool: old_string + new_string available
+      if ! edit_is_status_only_for_version_test "$normalized" "$old_snippet" "$new_snippet"; then
+        spec_changed="true"
+      fi
+    elif [ -n "$write_content" ]; then
+      # Write tool: full content, read old from disk
+      if ! write_is_status_only_for_version_test "$normalized" "$write_content"; then
+        spec_changed="true"
+      fi
+    else
       spec_changed="true"
     fi
   fi
@@ -122,7 +160,7 @@ while IFS= read -r record; do
   if ! printf '%s' "$normalized" | rg -qi "$NON_ACCEPTANCE_PATH_PATTERN"; then
     requires_acceptance="true"
   fi
-done < <(printf '%s' "$INPUT" | jq -rc '.. | objects | select((.path? // .file_path? // .filePath?) != null) | {path:(.path? // .file_path? // .filePath?), old:(.old_string? // .oldString? // ""), new:(.new_string? // .newString? // "")}' 2>/dev/null || true)
+done < <(printf '%s' "$INPUT" | jq -rc '.. | objects | select((.path? // .file_path? // .filePath?) != null) | {path:(.path? // .file_path? // .filePath?), old:(.old_string? // .oldString? // ""), new:(.new_string? // .newString? // ""), content:(.content? // "")}' 2>/dev/null || true)
 
 if [ "$requires_acceptance" = "true" ]; then
   printf 'needs_acceptance\n' > "$STATUS_FILE"

@@ -66,6 +66,7 @@ Do not add `autotest: …` to the PR `tdd-log` for hook purposes; that file is f
 - mode used (only-test / test-and-fix)
 - scope
 - command(s) executed
+- **build version (from `src/.output/chrome-mv3/manifest.json` or `src/package.json` — must report at startup before any test execution)**
 - pass/fail summary
 - failed cases with evidence
 - rerun status

@@ -27,12 +27,12 @@ What should Xia choose? (multi-select or binary)
 In each development session, advance and close work as follows:
 
 1. Route work to the correct phase (`brainstorming -> ... -> finishing-a-development-branch`).
-2. Route `superpowers` maintenance work through `Superpowers Runtime Sync`: fork first, overlay second, installed cache last.
-2. Enforce the version/PR artifact contract (six version-level files + four PR-level files; the sixth is `Vx.y.z-test.md`).
-3. Ensure test evidence is written: PR `Vx.y.z-PRn-tdd-log.md` (TDD cases) and version `Vx.y.z-test.md` (summary + **only** place for `autotest`/`mocktest`/`devicetest` status lines, plus `figma-live-sync` when the plan includes `Figma Live Design Sync`; see **Acceptance Tests and Gates**).
-4. Observe the acceptance-order gate (`autotest -> mocktest -> devicetest -> figma-live-sync(when planned)`), recorded under **`## Acceptance status (hooks)`** in `Vx.y.z-test.md` only.
-5. Enforce review ownership boundaries (`review-report` summarizes reviewer conclusions only).
-6. Participate in the feedback evolution loop (dispatch `evolution-keeper` when signals fire; `occurrences >= 2` proposes only, never auto-graduates; **evolution proposals** must be appended to `docs/LESSONS.md` — see that agent and the contract below).
+2. For `superpowers` maintenance, follow **Superpowers Runtime Sync** layer order (fork → overlay → installed cache), but **after fork-side edits and tests are done, ask Xia explicitly whether to run** the capture → status → deploy pipeline (or `/superpowers-runtime-sync`). **Do not** auto-run overlay capture or `deploy latest` without Xia’s go-ahead.
+3. Enforce the version/PR artifact contract (six version-level files + four PR-level files; the sixth is `Vx.y.z-test.md`).
+4. Ensure test evidence is written: PR `Vx.y.z-PRn-tdd-log.md` (TDD cases) and version `Vx.y.z-test.md` (summary + **only** place for `autotest`/`mocktest`/`devicetest` status lines, plus `figma-live-sync` when the plan includes `Figma Live Design Sync`; see **Acceptance Tests and Gates**).
+5. Observe the acceptance-order gate (`autotest -> mocktest -> devicetest -> figma-live-sync(when planned)`), recorded under **`## Acceptance status (hooks)`** in `Vx.y.z-test.md` only.
+6. Enforce review ownership boundaries (`review-report` summarizes reviewer conclusions only).
+7. Participate in the feedback evolution loop (dispatch `evolution-keeper` when signals fire; `occurrences >= 2` proposes only, never auto-graduates; **evolution proposals** must be appended to `docs/LESSONS.md` — see that agent and the contract below).
 
 ## File Layout (minimal runtime contract)
 
@@ -68,15 +68,19 @@ When the task is about `superpowers` hooks, commands, skills, rules, overlay fil
 2. Deployment helper layer is `docs/superpowers-local/`.
 3. Installed cache under `~/.claude/plugins/cache/claude-plugins-official/superpowers/<version>/` is the runtime target only.
 
-Mandatory maintenance order:
+**Human gate (mandatory):** After fork-side edits and validation are complete, **do not** automatically run overlay capture or `deploy latest`. **Ask Xia** whether to proceed with the `/superpowers-runtime-sync` pipeline (capture → status → deploy → black-box verify). Run capture/deploy only **after** Xia explicitly confirms.
 
-1. Edit and validate in the fork.
+When Xia approves, maintenance order is:
+
+1. Edit and validate in the fork (already done before the question).
 2. Capture managed files into the overlay.
 3. Check drift with `docs/scripts/sync-superpowers-fork.sh status`.
 4. Deploy with `docs/scripts/sync-superpowers-fork.sh deploy latest`.
 5. Black-box verify in a real Claude session.
 6. Append `docs/superpowers-local/LOCAL_RELEASES.md`.
 7. Commit, push, tag, and update `changelogs.md` in the fork.
+
+**Plugin root `changelogs.md` (Xia fork, not `docs/Vx.y.z-changelog.md`):** Any material change to **`hooks/`**, **`skills/`**, **`commands/`**, **`agents/`**, or **`scripts/`** that ships through Runtime Sync (`MANAGED_FILES.txt`) must land in root **`changelogs.md` in the same change set** (add the directory-row entry and an anchored section per that file’s maintenance rules). Do **not** defer documentation to “tag day only”; if the tag comes later, still add a **补录** section with the short `commit` hash first. **Do not** maintain a separate root `CHANGELOG.md` for this fork — the single release narrative index is **`changelogs.md`**.
 
 Do not treat ChatBobi overlay files or the installed cache as the primary editing location unless the user explicitly approves an emergency hotfix path.
 
@@ -99,9 +103,11 @@ Canonical labels: `Brainstorm -> Spec -> Plan -> TDD -> Subagent Development -> 
 
 ### Version/PR Artifacts (Mandatory)
 
-- Version root: `docs/Vx.y.z-<topic>/` (hooks also accept `docs/vx.y.z-<topic>/`; prefer **`V`** for new work)
-- Topic naming examples: `v0.1.4-scroll-highlight`, `v0.1.5-panel-ui`
+- Version root: `docs/{prefix}Vx.y.z-<topic>/` (hooks also accept `docs/{prefix}vx.y.z-<topic>/`; e.g. plugin `p` → `pv`, webapp `w` → `wv`; legacy `docs/V*` / `docs/v*` still resolve)
+- Topic naming examples: `pv0.1.4-scroll-highlight`, `wv0.1.0-homepage`
+- **Platform / repo-only bump** (no new product version folder): add **`.superpowers/platform-release`** and maintain **`docs/platform-release-test.md`** using `docs/superpowers/templates/versioning/platform-version-test-template.md`; remove the marker when resuming normal product versions.
 - Required version files: `Vx.y.z-design.md`, `Vx.y.z-spec.md`, `Vx.y.z-plan.md`, `Vx.y.z-changelog.md`, `Vx.y.z-decisions.md`, `Vx.y.z-test.md` (see `version-test-template.md` for **`## Acceptance status (hooks)`**)
+- **`Vx.y.z-spec.md` must also include `## Superpowers pipeline (hooks)`** with one line `Full extension acceptance pipeline: Yes` or `No` (user answers during brainstorming). **No** waives extension test-order enforcement on submit, manifest build reporting at Stop, and `src/package.json` vs shipped manifest drift checks; **Figma Live Design Sync** still follows whether the plan includes a Design Sync PR. `hooks/spec-gate-precheck` requires this section before `/writing-plans`.
 - Required PR files:
   - `Vx.y.z-PRn-tdd-log.md`
   - `Vx.y.z-PRn-subagent-summary.md`

@@ -55,7 +55,7 @@ if [ -z "$LATEST_VERSION" ]; then
 fi
 
 VERSION_BASENAME="$(basename "$LATEST_VERSION")"
-VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+VERSION_PREFIX="$(version_semantic_prefix_from_basename "$VERSION_BASENAME")"
 DESIGN_FILE="$LATEST_VERSION/${VERSION_PREFIX}-design.md"
 SPEC_FILE="$LATEST_VERSION/${VERSION_PREFIX}-spec.md"
 
@@ -80,5 +80,18 @@ fi
 if ! rg -qi "figma[[:space:]]+差异|Figma[[:space:]]+Diff|design[[:space:]]+diff|与[[:space:]]*figma[[:space:]]*差异" "$SPEC_FILE"; then
   block_and_exit "Spec gate 前置未满足：spec 缺少与 Figma 的差异说明。"
 fi
+
+if ! rg -q '^## Superpowers pipeline \(hooks\)$' "$SPEC_FILE" 2>/dev/null; then
+  block_and_exit "Spec gate 前置未满足：spec 缺少「## Superpowers pipeline (hooks)」小节。请在 brainstorming 中请用户确认是否执行完整扩展/实验室验收（含三测与扩展构建核对）后写入。"
+fi
+
+PIPE_SECTION="$(mktemp)"
+awk '/^## Superpowers pipeline \(hooks\)$/{p=1;next} p && /^## /{exit} p' "$SPEC_FILE" >"$PIPE_SECTION"
+if ! rg -qi '^Full extension acceptance pipeline[[:space:]:：]*[[:space:]]*(yes|y|true|no|n|false)\b' "$PIPE_SECTION" && \
+   ! rg -qi '^完整扩展验收流程[[:space:]:：]*[[:space:]]*(是|否)\b' "$PIPE_SECTION"; then
+  rm -f "$PIPE_SECTION"
+  block_and_exit "Spec gate 前置未满足：「## Superpowers pipeline (hooks)」内须含「Full extension acceptance pipeline: Yes 或 No」（或「完整扩展验收流程：是 或 否」）。"
+fi
+rm -f "$PIPE_SECTION"
 
 exit 0

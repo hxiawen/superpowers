@@ -79,6 +79,14 @@ if [ -z "$PROJECT_DIR" ]; then
   exit 0
 fi
 
+if superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
+  exit 0
+fi
+
+if superpowers_platform_release_active "$PROJECT_DIR"; then
+  exit 0
+fi
+
 set +e
 LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
 _RES_V=$?
@@ -91,7 +99,7 @@ if [ -z "$LATEST_VERSION" ]; then
 fi
 
 VERSION_BASENAME="$(basename "$LATEST_VERSION")"
-VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+VERSION_PREFIX="$(version_semantic_prefix_from_basename "$VERSION_BASENAME")"
 set +e
 LATEST_PR="$(resolve_active_pr_dir "$PROJECT_DIR" "$LATEST_VERSION" "$PROMPT")"
 _RES_P=$?

@@ -3,45 +3,29 @@
 
 set -euo pipefail
 
-escape_for_json() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\r'/\\r}"
-  s="${s//$'\t'/\\t}"
-  printf '%s' "$s"
-}
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/evolution-index-common
+. "$HOOK_DIR/evolution-index-common"
 
-FEEDBACK_INDEX="${CLAUDE_PROJECT_DIR:-}/.claude/feedback/FEEDBACK-INDEX.md"
-if [ -z "${CLAUDE_PROJECT_DIR:-}" ] || [ ! -f "$FEEDBACK_INDEX" ]; then
+if ! evo_load_index_stats; then
   exit 0
 fi
 
-TOTAL="$(rg "^- \\[" "$FEEDBACK_INDEX" -n --no-heading 2>/dev/null | wc -l | tr -d '[:space:]')"
-CANDIDATES="$(rg "status:\\s*candidate|occurrences:\\s*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX" -n --no-heading 2>/dev/null | wc -l | tr -d '[:space:]')"
-
-TOTAL="${TOTAL:-0}"
-CANDIDATES="${CANDIDATES:-0}"
-
-if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
-  if [ "$CANDIDATES" -gt 0 ] 2>/dev/null; then
-    printf 'candidate\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
-  else
-    printf 'needs_keeper\n' > "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required"
-  fi
-
-  reminder="Evolution check: found ${TOTAL} feedback entries in .claude/feedback/FEEDBACK-INDEX.md. Candidate signals detected: ${CANDIDATES}. Dispatch evolution-keeper to review candidates, produce proposals, require explicit human confirm/skip, and ensure docs/LESSONS.md includes adoption status (pending/adopted/not_adopted)."
-  reminder_escaped="$(escape_for_json "$reminder")"
+# Only surface SessionStart noise when there are actionable candidates (occurrences + status).
+if [ "${EVO_CANDIDATES:-0}" -gt 0 ] 2>/dev/null; then
+  evo_write_required_marker
+  reminder="$(evo_reminder_text)"
+  reminder_escaped="$(evo_escape_for_json "$reminder")"
 
   if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
     printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
   elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
     printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$reminder_escaped"
   else
-    printf '{\n  "additionalContext": "%s"\n}\n' "$reminder_escaped"
+    printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
   fi
+else
+  rm -f "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required" 2>/dev/null || true
 fi
 
 exit 0

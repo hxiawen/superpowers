@@ -78,5 +78,16 @@ assert_path_eq "$resolved" "$LO_VERSION" "resolve_latest_version_dir finds docs/
 resolved="$(resolve_active_pr_dir "$LO_ROOT" "$LO_VERSION" "")"
 assert_path_eq "$resolved" "$LO_PR" "resolve_active_pr_dir finds v*-PR* under lowercase root"
 
+# 7) Product-line prefix pv* version root + PR
+PV_ROOT="$TMP_DIR/pv-project"
+PV_VERSION="$PV_ROOT/docs/pv0.3.0-panel-ui"
+PV_PR="$PV_VERSION/pv0.3.0-PR1"
+mkdir -p "$PV_PR" "$PV_ROOT/.claude"
+touch "$PV_PR/pv0.3.0-PR1-tdd-log.md"
+resolved="$(resolve_latest_version_dir "$PV_ROOT")"
+assert_path_eq "$resolved" "$PV_VERSION" "resolve_latest_version_dir finds docs/pv* root"
+resolved="$(SUPERPOWERS_ACTIVE_PR_CONTEXT="PR1" resolve_active_pr_dir "$PV_ROOT" "$PV_VERSION" "")"
+assert_path_eq "$resolved" "$PV_PR" "resolve_active_pr_dir finds pv*-PR* under prefixed version root"
+
 echo ""
 echo "=== active PR resolution checks passed ==="

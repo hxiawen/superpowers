@@ -13,6 +13,8 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
+**Workflow phase (automation):** When the user explicitly starts this skill (e.g. `writing-plans`, `开始 writing-plans`, `/writing-plans`), the `workflow-phase-auto` hook sets `.superpowers/workflow-phase` to `writing-plans` on product repos — no manual shell setup.
+
 **Context:** This should be run with a dedicated worktree available before Stage 5 execution (provisioned by `using-git-worktrees` when `subagent-driven-development` starts).
 
 **Save plans to:** `docs/Vx.y.z-<topic>/Vx.y.z-plan.md`
@@ -100,6 +102,8 @@ The plan must hand off execution as a PR loop, not one linear pass across all ta
 3. Move to next PR after current PR passes review; version-level stop gate covers ordered acceptance in `Vx.y.z-test.md`
 4. On each PR transition (`PR1 -> PR2 -> ...`), set active PR context for PR-scoped docs before hooks that need it. The acceptance **block** is in the version file, not per-PR.
 5. After `PRn` completion, run version-level regression/aggregation before final branch completion while keeping active PR bound to `PRn` where needed for PR paths.
+
+**`Vx.y.z-spec.md` → `## Superpowers pipeline (hooks)`:** If `Full extension acceptance pipeline: No` (or `完整扩展验收流程：否`), treat the version as **extension pipeline waived**: keep three lines for `autotest`/`mocktest`/`devicetest` with waived statuses (e.g. `N/A`) unless you truly run those tests; hooks will not enforce UserPromptSubmit order for those three, will not require manifest build reporting at Stop, and will skip `src/package.json` vs `.output/.../manifest.json` drift. **Do not** change Figma rules: if this plan includes **Figma Live Design Sync**, still append that PR and still record `figma-live-sync` after `devicetest`. If the spec says **Yes**, keep the normal ordered extension acceptance.
 
 ## Version Governance Outputs (Mandatory)
 

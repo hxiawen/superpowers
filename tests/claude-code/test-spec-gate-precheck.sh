@@ -66,6 +66,10 @@ cat > "$VERSION_DIR/V0.1.0-spec.md" <<'EOF'
 
 ## Figma Diff
 - Footer capsule uses fixed 105px width.
+
+## Superpowers pipeline (hooks)
+
+Full extension acceptance pipeline: Yes
 EOF
 
 if ! printf '%s' "$PROMPT_JSON" | CLAUDE_PROJECT_DIR="$TMP_DIR" bash "$HOOK_PATH" >/dev/null 2>&1; then

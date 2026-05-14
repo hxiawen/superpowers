@@ -48,6 +48,29 @@ User: https://www.figma.com/design/...
 MCP server connected != 当前会话可调用 Figma 工具
 ```
 
+### 2.0 官方配置、本机 Desktop 与本命令的命名约定
+
+Figma 官方文档（[Figma MCP Server Guide](https://github.com/figma/mcp-server-guide)）推荐的 Claude Code 做法是安装插件 `figma@claude-plugins-official`，或手动：
+
+```bash
+claude mcp add --transport http figma https://mcp.figma.com/mcp
+```
+
+这样注册的 MCP **服务名通常是 `figma`**，会话里暴露的工具前缀为 **`mcp__figma__*`**（与 `figma-desktop` 不同）。
+
+**与本命令及 Superpowers hooks 的关系：**
+
+| 服务名 | 典型 URL | 说明 |
+|--------|----------|------|
+| **`figma-desktop`** | `http://127.0.0.1:3845/mcp` | Figma Mac 在本地提供的 MCP（画布下方可出现 “MCP server enabled … 3845”）。**本命令要求检查并使用 `mcp__figma-desktop__*`**。使用前请打开 **Figma Mac** 并进入目标设计文件。 |
+| **`figma`** | `https://mcp.figma.com/mcp` | 官方远程 MCP；工具前缀为 **`mcp__figma__*`**；部分工具仅远程可用（见 Figma 开发者文档）。 |
+
+**推荐：** 按本命令做 `/figma-read` 时，**保留名为 `figma-desktop`、指向 `127.0.0.1:3845/mcp` 的 MCP**；若还需远程独占能力，可同时保留 **`figma`**。二者可同时存在。
+
+**若 `figma`（远程）未连接但 `figma-desktop` 已连接：** 只要本机 Figma 已打开，**读取** metadata / screenshot / design context **仍可优先走 `figma-desktop`**；远程失败另行排查网络、鉴权或令牌，勿误判为「无法读稿」。**勿**把个人令牌写入仓库或聊天。
+
+**若仅安装官方插件、未单独添加 `figma-desktop`：** 可选用已暴露的 **`mcp__figma__get_metadata` / `get_screenshot` / `get_design_context`** 完成同类读取；本仓库 hooks 仍以 **`figma-desktop__`** 为默认约定——团队若在 fork 中只使用 `figma`，应统一改写 hook/命令文案或增补并行检查。
+
 ### 2.1 检查 MCP server
 
 运行：

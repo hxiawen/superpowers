@@ -25,6 +25,31 @@ Superpowers skills override default system prompt behavior, but **user instructi
 
 If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
 
+## Project root (Superpowers-only maintenance)
+
+When work is **only** to edit Superpowers hooks, skills, or docs in the **version-controlled fork**, open Claude Code with the **fork repo as the Project root** rather than a product repository on `main`, so product `UserPromptSubmit` workflow gates stay decoupled from branch state.
+
+## Workflow phase marker (product repo on `main`)
+
+**Automation (default):** In ChatBobi-style layouts, the `workflow-phase-auto` hook runs on **UserPromptSubmit** (before `workflow-bootstrap-gate`). It creates/updates **`.superpowers/workflow-phase`** when the user message clearly indicates an early pipeline phase — for example: `pv0.1.13` + `brainstorming`, `invoke brainstorming`, `/brainstorm`, `开始 writing-plans`, `git checkout -b feat/…`, or explicit “回到 brainstorming”. **No manual shell commands** are required for normal turns.
+
+**Manual override:** You may still edit the file by hand if the hook missed a turn. First non-comment line is the token (`#` comments allowed).
+
+Allowed auto / manual tokens (case-insensitive; trim spaces):
+
+- `brainstorming` — ideation / UX discussion before implementation
+- `writing-plans` — plan / PR scaffold work in docs, still not shipping code from this prompt class
+- `planning` — requirements / scope shaping
+- `requirements` — same intent as planning
+- `design` — design-doc iteration
+- `spec` — spec iteration before code
+
+While one of these tokens is set, **main** bypasses the strict “must be on feat branch” gate **unless** the user prompt matches **hard implementation** signals (e.g. `src/`, `app/`, explicit ship/commit language). The hook may set **`implementation`** when the user clearly starts shipping work (e.g. real `git checkout -b feat/` intent); that turns the strict gate back on. **Deleting** `.superpowers/workflow-phase` also clears the early-phase bypass.
+
+The marker file is often **untracked**; it does **not** count as “workspace-only whitelist changes” by itself, so prompts that clearly target `src/` / `app/` are still blocked on `main`.
+
+Prefer a **feature branch** once you start editing product code.
+
 ## Feedback Evolution Responsibility (Evolution Keeper)
 
 When feedback/evolution hook reminders are injected, dispatch `agents/evolution-keeper.md` to execute the loop within existing workflow:
@@ -50,6 +75,7 @@ When a feedback/evolution reminder was injected, the main agent must surface the
 - Include `## Evolution Keeper Result` exactly once in the response
 - If keeper action is `no-op`, provide a concrete reason
 - If candidates exist, list explicit `confirm/skip` decisions required from the human
+- Do **not** quote the SessionStart hook's **"Candidate signals detected: N"** in the user-facing reply when the keeper returns `no-op` (that number can be stale; the Result block is authoritative). Prefer dispatching the keeper and presenting only its Result.
 
 ## How to Access Skills
 
