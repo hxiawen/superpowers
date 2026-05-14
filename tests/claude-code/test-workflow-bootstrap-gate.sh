@@ -8,12 +8,6 @@ HOOK="$ROOT/hooks/workflow-bootstrap-gate"
 
 echo "=== Test: workflow-bootstrap-gate ==="
 
-run_hook() {
-  local project_dir="$1"
-  shift
-  printf '%s' "$1" | CLAUDE_PROJECT_DIR="$project_dir" bash "$HOOK" 2>&1 || true
-}
-
 assert_exit() {
   local project_dir="$1"
   local payload="$2"
@@ -81,6 +75,19 @@ mkdir -p "$TMP/m3/.superpowers"
 printf 'y\n' >"$TMP/m3/.superpowers/note.txt"
 git -C "$TMP/m3" add .superpowers/note.txt
 assert_exit "$TMP/m3" '{"prompt":"帮我修改一下东西"}' 0 "main + whitelist-only workspace (no narrow intent needed)"
+
+git_init_main "$TMP/m4"
+assert_exit "$TMP/m4" '{"prompt":"调整一下，改为 顶部对齐。但如果有引用，则与引用首行对齐。"}' 0 "main + layout/brainstorm wording (adjust一下 + 对齐/引用)"
+
+git_init_main "$TMP/m5"
+mkdir -p "$TMP/m5/.superpowers"
+printf '%s\n' 'brainstorming' >"$TMP/m5/.superpowers/workflow-phase"
+assert_exit "$TMP/m5" '{"prompt":"优化一下默认选项的交互流程，先定产品规则"}' 0 "main + workflow-phase brainstorming (no code keywords)"
+
+git_init_main "$TMP/m6"
+mkdir -p "$TMP/m6/.superpowers"
+printf '%s\n' 'brainstorming' >"$TMP/m6/.superpowers/workflow-phase"
+assert_json_block "$TMP/m6" '{"prompt":"帮我改 src/index.ts 实现登录"}' "main + phase file but hard implementation (src/) still blocks"
 
 mkdir -p "$TMP/f1/docs"
 git_init_main "$TMP/f1"

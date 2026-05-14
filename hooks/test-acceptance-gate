@@ -6,6 +6,8 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/acceptance-order-common
 . "$HOOK_DIR/acceptance-order-common"
+# shellcheck source=hooks/evolution-index-common
+. "$HOOK_DIR/evolution-index-common"
 
 block_and_exit() {
   local reason="$1"
@@ -66,6 +68,38 @@ fi
 
 clear_user_confirmation_block_state
 
+if superpowers_platform_release_active "$PROJECT_DIR"; then
+  PLATFORM_TEST="$(superpowers_platform_version_test_path "$PROJECT_DIR")"
+  if [ ! -f "$PLATFORM_TEST" ]; then
+    block_and_exit "已启用平台/repo 级版本（存在 .superpowers/platform-release），但缺少 docs/platform-release-test.md。请复制 docs/superpowers/templates/versioning/platform-version-test-template.md 并填写验收状态。"
+  fi
+  if ! validate_platform_acceptance_section "$PLATFORM_TEST" "docs/platform-release-test.md" "$STATUS_FALLBACK"; then
+    exit 2
+  fi
+  if [ -x "$HOOK_DIR/../scripts/check-evolution-closure.sh" ]; then
+    set +e
+    EVOLUTION_CHECK_OUTPUT="$("$HOOK_DIR/../scripts/check-evolution-closure.sh" "$PROJECT_DIR" 2>&1)"
+    EVOLUTION_CHECK_CODE=$?
+    set -e
+    if [ "$EVOLUTION_CHECK_CODE" -eq 2 ]; then
+      block_and_exit "$EVOLUTION_CHECK_OUTPUT"
+    fi
+  fi
+  export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
+  if [ -f "$PROJECT_DIR/.claude/feedback/FEEDBACK-INDEX.md" ] && evo_load_index_stats && [ "${EVO_CANDIDATES:-0}" -gt 0 ]; then
+    LESSONS_FILE="$PROJECT_DIR/docs/LESSONS.md"
+    if [ ! -f "$LESSONS_FILE" ]; then
+      block_and_exit "检测到反馈候选信号，但缺少 docs/LESSONS.md。请先通过 evolution-keeper 记录可见闭环产物。"
+    fi
+    if ! rg -qi "建议是否被采纳[：:][[:space:]]*(pending|adopted|not_adopted)|adoption[：:][[:space:]]*(pending|adopted|not_adopted)" "$LESSONS_FILE"; then
+      block_and_exit "docs/LESSONS.md 缺少进化采纳状态（pending/adopted/not_adopted）。请先补齐闭环记录。"
+    fi
+  fi
+  printf 'clean\n' > "$STATUS_FILE"
+  rm -f "$PROJECT_DIR/.claude/.evolution-required"
+  exit 0
+fi
+
 set +e
 LATEST_VERSION="$(resolve_latest_version_dir "$PROJECT_DIR")"
 _RES_V=$?
@@ -78,7 +112,7 @@ if [ -z "$LATEST_VERSION" ]; then
 fi
 
 VERSION_BASENAME="$(basename "$LATEST_VERSION")"
-VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+VERSION_PREFIX="$(version_semantic_prefix_from_basename "$VERSION_BASENAME")"
 set +e
 LATEST_PR="$(resolve_active_pr_dir "$PROJECT_DIR" "$LATEST_VERSION" "")"
 _RES_P=$?
@@ -205,9 +239,9 @@ if [ -x "$HOOK_DIR/../scripts/check-evolution-closure.sh" ]; then
   fi
 fi
 
-FEEDBACK_INDEX="$PROJECT_DIR/.claude/feedback/FEEDBACK-INDEX.md"
-LESSONS_FILE="$PROJECT_DIR/docs/LESSONS.md"
-if [ -f "$FEEDBACK_INDEX" ] && rg -qi "status:[[:space:]]*candidate|occurrences:[[:space:]]*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX"; then
+export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
+if [ -f "$PROJECT_DIR/.claude/feedback/FEEDBACK-INDEX.md" ] && evo_load_index_stats && [ "${EVO_CANDIDATES:-0}" -gt 0 ]; then
+  LESSONS_FILE="$PROJECT_DIR/docs/LESSONS.md"
   if [ ! -f "$LESSONS_FILE" ]; then
     block_and_exit "检测到反馈候选信号，但缺少 docs/LESSONS.md。请先通过 evolution-keeper 记录可见闭环产物。"
   fi

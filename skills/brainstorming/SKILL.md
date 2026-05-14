@@ -9,7 +9,9 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea.
 
-This skill has two mandatory gates:
+This skill has mandatory checkpoints:
+
+- **Workflow phase (automation):** On product repos on `main`, the `workflow-phase-auto` hook updates `.superpowers/workflow-phase` to `brainstorming` when the user’s turn clearly starts this phase (e.g. version id + `brainstorming`, `invoke brainstorming`, `/brainstorm`, or “插件 pv… brainstorming”). No manual `mkdir`/`echo` is required; you may still hand-edit the file if a turn was missed.
 
 - **design-gate:** product/design alignment and user-value closure, ending in approved `Vx.y.z-design.md`
 - **spec-gate:** implementation-ready spec closure (testable boundaries, capacity and material traceability), ending in approved `Vx.y.z-spec.md`

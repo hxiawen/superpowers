@@ -13,6 +13,8 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
+**Workflow phase (automation):** When the user explicitly starts this skill (e.g. `writing-plans`, `开始 writing-plans`, `/writing-plans`), the `workflow-phase-auto` hook sets `.superpowers/workflow-phase` to `writing-plans` on product repos — no manual shell setup.
+
 **Context:** This should be run with a dedicated worktree available before Stage 5 execution (provisioned by `using-git-worktrees` when `subagent-driven-development` starts).
 
 **Save plans to:** `docs/Vx.y.z-<topic>/Vx.y.z-plan.md`

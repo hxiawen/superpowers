@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: block direct implementation before branch/docs/PR scaffold exist.
 # No.8: on main/master, allow narrow Superpowers/feedback intents and workspace-only whitelist paths.
+# Phase marker: repo-root .superpowers/workflow-phase — first non-comment line (see using-superpowers).
 
 set -euo pipefail
 
@@ -55,6 +56,59 @@ is_direct_change_request() {
   return 1
 }
 
+# On main only: UX / layout / brainstorming wording without code-shipping signals (not "start implementation").
+is_design_or_layout_discussion_prompt() {
+  local prompt="$1"
+  if printf '%s' "$prompt" | rg -qi '实现|重构|写代码|落地|提交|发版|eslint|typescript|\.tsx?|\.jsx?|\.vue|manifest\.json|wxt\.|content[_-]?script|background\.ts|src/|app/|e2e/|scripts/|package\.json|测试用例|TDD|PR[0-9]|接口实现|数据库|API.?key'; then
+    return 1
+  fi
+  if printf '%s' "$prompt" | rg -qi '(对齐|偏移|间距|布局|面板|引用|滚动|顶部|底部|首行|外观|样式|视觉|体验|交互|打磨|留白|边距|内边距|外边距|圆角|阴影|字号|字体|px|rem|em|vw|vh|brainstorm|头脑风暴|需求沟通|方案讨论)'; then
+    return 0
+  fi
+  return 1
+}
+
+# First meaningful line of .superpowers/workflow-phase (lowercase); empty if missing/invalid.
+read_workflow_phase_token() {
+  local project_dir="$1"
+  local f token
+  f="${project_dir}/.superpowers/workflow-phase"
+  [ -f "$f" ] || return 1
+  token="$(
+    rg -v '^[[:space:]]*(#|$)' "$f" 2>/dev/null | head -n 1 \
+      | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]' || true
+  )"
+  [ -n "$token" ] || return 1
+  printf '%s' "$token"
+}
+
+# Returns 0 when the prompt clearly targets repo code / ship path (do not honor phase-only bypass on main).
+is_main_hard_implementation_prompt() {
+  local prompt="$1"
+  if printf '%s' "$prompt" | rg -qi 'app/(plugin|webapp)|(\./)?app/|wxt\.|content[_-]?script|background\.ts|src/|e2e/|scripts/|package\.json|manifest\.json|\.tsx?|\.jsx?|\.vue|eslint|发版|上架|CWS|提交.{0,12}(代码|改动|实现)|git[[:space:]]+(push|commit|checkout)|开.?pr|merge|npm[[:space:]]+run|pnpm[[:space:]]+run|写死代码|落库|接口实现|TDD|测试用例|\.output/|dist/|build/'; then
+    return 0
+  fi
+  return 1
+}
+
+# On main/master: .superpowers/workflow-phase early tokens bypass the main implementation gate
+# unless the prompt looks like hard code/ship work.
+is_early_workflow_phase_exempt_on_main() {
+  local project_dir="$1"
+  local prompt="$2"
+  local token
+  token="$(read_workflow_phase_token "$project_dir" 2>/dev/null || true)"
+  [ -n "$token" ] || return 1
+  case "$token" in
+    brainstorming|writing-plans|planning|requirements|design|spec) ;;
+    *) return 1 ;;
+  esac
+  if is_main_hard_implementation_prompt "$prompt"; then
+    return 1
+  fi
+  return 0
+}
+
 # Returns 0 if this prompt should bypass main-branch implementation block (narrow allow-list).
 is_main_allowed_work_intent() {
   local prompt="$1"
@@ -70,10 +124,13 @@ is_main_allowed_work_intent() {
 }
 
 # Returns 0 iff git working tree changes are only under conservative whitelist paths.
+# Note: .superpowers/workflow-phase alone does not count — it is a phase marker and would
+# otherwise mask main-branch prompts that must still be checked (No.8 follow-up).
 main_workspace_only_whitelist_changes() {
   local project_dir="$1"
   local f
   local -a paths=()
+  local saw_meaningful=0
 
   while IFS= read -r f; do
     [ -n "$f" ] && paths+=("$f")
@@ -91,10 +148,12 @@ main_workspace_only_whitelist_changes() {
 
   for f in "${paths[@]}"; do
     case "$f" in
-      .superpowers/* | docs/superpowers-local/*) continue ;;
+      .superpowers/workflow-phase) ;;
+      .superpowers/* | docs/superpowers-local/*) saw_meaningful=1 ;;
       *) return 1 ;;
     esac
   done
+  [ "$saw_meaningful" -eq 1 ] || return 1
   return 0
 }
 
@@ -126,6 +185,12 @@ if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
     exit 0
   fi
   if main_workspace_only_whitelist_changes "$PROJECT_DIR"; then
+    exit 0
+  fi
+  if is_design_or_layout_discussion_prompt "$PROMPT"; then
+    exit 0
+  fi
+  if is_early_workflow_phase_exempt_on_main "$PROJECT_DIR" "$PROMPT"; then
     exit 0
   fi
   block_and_exit "当前分支是 ${BRANCH}。按项目规则，代码实现前必须先从 ${BRANCH} 拉功能分支 feat/(前缀)v主版本-主题（如 feat/v0.1.0-topic、feat/pv0.1.0-topic），禁止直接在 ${BRANCH} 上改业务实现。" main_hint

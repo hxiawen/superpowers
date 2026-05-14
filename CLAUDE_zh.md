@@ -78,6 +78,8 @@ docs/
 6. 追加 `docs/superpowers-local/LOCAL_RELEASES.md`
 7. 最后在 fork 中 commit、push、tag，并更新 `changelogs.md`
 
+**根目录 `changelogs.md`（夏 fork 插件总账，不是 `docs/Vx.y.z-changelog.md`）：**凡对经 Runtime Sync 下发的 **`hooks/`、`skills/`、`commands/`、`agents/`、`scripts/`**（见 ChatBobi `MANAGED_FILES.txt`）做**实质性**改动，须**与代码同一变更集**写入根目录 **`changelogs.md`**（目录表加一行 + 按该文件「本文件怎么维护」起锚点小节）。**不要**把记录推迟到「打 tag 那天再写」；若发版滞后，可先写 **补录** 并带短 `commit`。**不要**再维护单独的根目录 `CHANGELOG.md` —— 本 fork 的对外变更索引**只保留 `changelogs.md`**。
+
 除非用户明确批准紧急 hotfix 路径，否则不要把 ChatBobi overlay 文件或 installed cache 当成主要编辑位置。
 
 ## 运行时约定（Superpowers 5.0.7）
@@ -99,8 +101,9 @@ docs/
 
 ### 版本/PR 产物（强制）
 
-- 版本根目录：`docs/Vx.y.z-<topic>/`（钩子也接受 `docs/vx.y.z-<topic>/`；新工作优先使用大写 **`V`**）
-- 主题命名示例：`v0.1.4-scroll-highlight`、`v0.1.5-panel-ui`
+- 版本根目录：`docs/{prefix}Vx.y.z-<topic>/`（钩子也接受 `docs/{prefix}vx.y.z-<topic>/`；例如插件 `p` → `pv`，Web `w` → `wv`；仍兼容旧式 `docs/V*` / `docs/v*`）
+- 主题命名示例：`pv0.1.4-scroll-highlight`、`wv0.1.0-homepage`
+- **仅平台 / repo 级 bump**（无新产品版本目录）：添加 **`.superpowers/platform-release`**，并按 `docs/superpowers/templates/versioning/platform-version-test-template.md` 维护 **`docs/platform-release-test.md`**；恢复常规产品版本时请删除该 marker。
 - 必备版本级文件：`Vx.y.z-design.md`、`Vx.y.z-spec.md`、`Vx.y.z-plan.md`、`Vx.y.z-changelog.md`、`Vx.y.z-decisions.md`、`Vx.y.z-test.md`（**`## Acceptance status (hooks)`** 等见 `version-test-template.md`）
 - **`Vx.y.z-spec.md` 还须含 `## Superpowers pipeline (hooks)`**：一行 `Full extension acceptance pipeline: Yes` 或 `No`（brainstorming 问用户后写入）。**No** 时 hooks 豁免扩展三测顺序门、Stop 上 manifest 构建号门、`src/package.json` 与产物 manifest 漂移门；**不**影响 Figma Live Design Sync（仍由 plan 是否含 Design Sync PR 决定）。进入 `/writing-plans` 前由 `hooks/spec-gate-precheck` 校验该小节。
 - 必备 PR 级文件：

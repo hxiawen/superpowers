@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: auto-maintain .superpowers/workflow-phase for main-branch bootstrap (No.8).
+# Never blocks; never prints (stdout must stay empty for Claude Code).
+
+set -euo pipefail
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // .payload.prompt // .payload.message // .payload.text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+# Numeric order for downgrade guard (higher = closer to implementation).
+phase_rank() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    brainstorming) echo 10 ;;
+    planning) echo 20 ;;
+    design) echo 30 ;;
+    spec) echo 40 ;;
+    writing-plans) echo 50 ;;
+    implementation) echo 90 ;;
+    *) echo 0 ;;
+  esac
+}
+
+read_prev_phase_token() {
+  local f="$1/.superpowers/workflow-phase"
+  [ -f "$f" ] || return 1
+  { rg -v '^[[:space:]]*(#|$)' "$f" 2>/dev/null || true; } | head -n 1 \
+    | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]'
+}
+
+# Returns 0 if we should skip writing new_token because it would downgrade without explicit intent.
+phase_downgrade_without_explicit_return() {
+  local prev="$1" new="$2" prompt="$3"
+  local pr nr
+  pr="$(phase_rank "$prev")"
+  nr="$(phase_rank "$new")"
+  [ "$pr" -eq 0 ] && return 1
+  [ "$nr" -ge "$pr" ] && return 1
+  if printf '%s' "$prompt" | rg -qi '回到|退回|重新|回到.{0,30}brainstorm|回到.{0,30}头脑风暴|重新头脑风暴|重新.?brainstorm'; then
+    return 1
+  fi
+  return 0
+}
+
+detect_phase_token_from_prompt() {
+  local p="$1"
+  if printf '%s' "$p" | rg -qi 'git[[:space:]]+checkout[[:space:]]+-b[[:space:]]+feat/|(准备|开始).{0,16}(写代码|落地实现|提交代码|改源码|上代码)|进入.{0,12}实现阶段|implementation[[:space:]]+phase'; then
+    printf 'implementation'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi '/writing-plans|(开始|进入|用|走|执行|invoke).{0,30}(writing-plans|writing[[:space:]]+plans)|writing-plans[[:space:]]+skill'; then
+    printf 'writing-plans'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi 'spec-gate|spec[[:space:]]+gate|规格评审|进入[[:space:]]*spec|spec[[:space:]]+评审'; then
+    printf 'spec'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi 'design-gate|design[[:space:]]+gate|设计评审|设计定稿|进入[[:space:]]*design'; then
+    printf 'design'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi '(需求沟通|需求讨论|范围确认|planning).{0,12}阶段|进入[[:space:]]*planning|planning[[:space:]]+阶段'; then
+    printf 'planning'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi '(回到|退回).{0,25}(brainstorming|brainstorm|头脑风暴)'; then
+    printf 'brainstorming'
+    return
+  fi
+  if printf '%s' "$p" | rg -qi '/brainstorm|(开始|进入|用|走|执行|invoke).{0,30}(brainstorming|brainstorm|头脑风暴)|插件.{0,70}(brainstorm|头脑风暴|brainstorming)|(brainstorming|brainstorm|头脑风暴).{0,70}(pv|wv|chatbobi-v|[vV][0-9]+\.[0-9]+\.[0-9]+)|(pv|wv|chatbobi-v)[0-9]+\.[0-9]+\.[0-9]+.{0,70}(brainstorm|头脑风暴|brainstorming)'; then
+    printf 'brainstorming'
+    return
+  fi
+  printf ''
+}
+
+atomic_write_phase() {
+  local root="$1" token="$2"
+  local dir="$root/.superpowers"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  local f="$dir/workflow-phase"
+  local tmp
+  tmp="$(mktemp "${dir}/.workflow-phase.tmp.XXXXXX" 2>/dev/null || true)"
+  [ -n "$tmp" ] || return 0
+  {
+    printf '%s\n' "$token"
+    printf '# Auto-maintained by workflow-phase-auto hook. Safe to commit or gitignore.\n'
+  } >"$tmp" 2>/dev/null || {
+    rm -f "$tmp"
+    return 0
+  }
+  mv -f "$tmp" "$f" 2>/dev/null || {
+    rm -f "$tmp"
+    return 0
+  }
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+[ -n "$PROMPT" ] || exit 0
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+[ -n "$PROJECT_DIR" ] || exit 0
+[ -d "$PROJECT_DIR" ] || exit 0
+
+NEW_TOKEN="$(detect_phase_token_from_prompt "$PROMPT")"
+[ -n "$NEW_TOKEN" ] || exit 0
+
+PREV_TOKEN=""
+PREV_TOKEN="$(read_prev_phase_token "$PROJECT_DIR" 2>/dev/null || true)"
+
+if [ -n "$PREV_TOKEN" ] && phase_downgrade_without_explicit_return "$PREV_TOKEN" "$NEW_TOKEN" "$PROMPT"; then
+  exit 0
+fi
+
+atomic_write_phase "$PROJECT_DIR" "$NEW_TOKEN"
+exit 0

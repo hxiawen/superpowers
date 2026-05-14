@@ -1,7 +1,10 @@
 # Version Test Summary
 
-**Version:** `Vx.y.z-<topic>`
+**Version:** `Vx.y.z-<topic>` or `pvX.Y.Z-<topic>` / `wvX.Y.Z-<topic>` (product-line prefix + semver; hooks resolve all of these under `docs/`.)
+
 **Date:** `YYYY-MM-DD`
+
+**Platform-only repo release:** If there is no product version directory under `docs/`, use **`docs/platform-release-test.md`** and a **`.superpowers/platform-release`** marker — see `platform-version-test-template.md`.
 
 ## Maintenance Timing (Mandatory)
 

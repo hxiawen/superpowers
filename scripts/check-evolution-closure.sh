@@ -17,8 +17,19 @@ if [ ! -f "$FEEDBACK_INDEX" ]; then
   exit 0
 fi
 
-if ! rg -qi "status:[[:space:]]*candidate|occurrences:[[:space:]]*([2-9]|[1-9][0-9]+)" "$FEEDBACK_INDEX"; then
-  echo "OK: no candidate feedback signals"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=hooks/evolution-index-common
+. "$ROOT/hooks/evolution-index-common"
+
+export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
+if ! evo_load_index_stats; then
+  echo "OK: feedback index unreadable"
+  exit 0
+fi
+
+if [ "${EVO_CANDIDATES:-0}" -eq 0 ] 2>/dev/null; then
+  echo "OK: no actionable evolution candidates (index reconciled)"
   exit 0
 fi
 

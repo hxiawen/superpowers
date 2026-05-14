@@ -11,7 +11,8 @@ if ! evo_load_index_stats; then
   exit 0
 fi
 
-if [ "$EVO_TOTAL" -gt 0 ] 2>/dev/null; then
+# Only surface SessionStart noise when there are actionable candidates (occurrences + status).
+if [ "${EVO_CANDIDATES:-0}" -gt 0 ] 2>/dev/null; then
   evo_write_required_marker
   reminder="$(evo_reminder_text)"
   reminder_escaped="$(evo_escape_for_json "$reminder")"
@@ -23,6 +24,8 @@ if [ "$EVO_TOTAL" -gt 0 ] 2>/dev/null; then
   else
     printf '{\n  "additional_context": "%s"\n}\n' "$reminder_escaped"
   fi
+else
+  rm -f "${CLAUDE_PROJECT_DIR}/.claude/.evolution-required" 2>/dev/null || true
 fi
 
 exit 0

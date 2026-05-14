@@ -105,16 +105,18 @@ if [ "$code2" -ne 0 ]; then
 fi
 echo "  [PASS] hook exits successfully (adopted fixture)"
 
-assert_contains "$output2" 'found 3 feedback entries' "hook counts all table rows"
-assert_contains "$output2" 'Candidate signals detected: 0' "hook does not count adopted/not_adopted as candidates"
-
-marker2="$(tr -d '[:space:]' < "$PROJECT_DIR2/.claude/.evolution-required")"
-if [ "$marker2" != "needs_keeper" ]; then
-  echo "  [FAIL] expected needs_keeper marker when no pending candidates"
-  echo "  actual=$marker2"
+if [ -n "${output2//[[:space:]]/}" ]; then
+  echo "  [FAIL] expected empty stdout when there are zero actionable candidates"
+  printf '%s\n' "$output2"
   exit 1
 fi
-echo "  [PASS] hook writes needs_keeper marker when EVO_CANDIDATES is zero"
+echo "  [PASS] hook emits no SessionStart JSON when EVO_CANDIDATES is zero"
+
+if [ -f "$PROJECT_DIR2/.claude/.evolution-required" ]; then
+  echo "  [FAIL] expected no evolution-required marker when EVO_CANDIDATES is zero"
+  exit 1
+fi
+echo "  [PASS] hook clears evolution-required marker when no actionable candidates"
 
 echo ""
 echo "=== check-evolution checks passed ==="

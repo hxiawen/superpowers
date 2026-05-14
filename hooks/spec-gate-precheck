@@ -55,7 +55,7 @@ if [ -z "$LATEST_VERSION" ]; then
 fi
 
 VERSION_BASENAME="$(basename "$LATEST_VERSION")"
-VERSION_PREFIX="$(printf '%s' "$VERSION_BASENAME" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+VERSION_PREFIX="$(version_semantic_prefix_from_basename "$VERSION_BASENAME")"
 DESIGN_FILE="$LATEST_VERSION/${VERSION_PREFIX}-design.md"
 SPEC_FILE="$LATEST_VERSION/${VERSION_PREFIX}-spec.md"
 

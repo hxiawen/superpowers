@@ -9,6 +9,8 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
+| **2026-05-15 发版**：工作区归并 — `test-acceptance-gate` 平台验收路径、evolution closure 脚本、`using-superpowers` 增补、fork `LESSONS.md`、Clockworkman 内稿、模板与回归测试 | [→ 打开](#sec-20260515-release-wip) |
+| **main 上 UserPromptSubmit 门禁纠偏 + 阶段自动化**：不误拦 brainstorming/布局话术；`workflow-phase-auto` 写 `.superpowers/workflow-phase`；`feat/pv|wv|chatbobi-v…` 与 docs 版本根对齐 | [→ 打开](#sec-20260514-main-workflow-gates) |
 | **Spec「Superpowers pipeline」**：`Full extension acceptance pipeline` Yes/No；`No` 豁免三测顺序 / manifest 报告 / 包版本漂移；Figma 仍按 plan | [→ 打开](#sec-20260507-superpowers-pipeline-spec) |
 | **SessionStart evolution**：候选计数与 `Status` 对齐；keeper / `using-superpowers` no-op 呈现约定；`test-check-evolution` 回归 | [→ 打开](#sec-20260507-evolution-hook-count) |
 | `/figma-read`：**官方 `figma`（远程）** 与 **`figma-desktop`（本机 3845）** 双 MCP 命名、推荐配置与仅装插件时的备选 | [→ 打开](#sec-20260430-figma-read-mcp-dual) |
@@ -48,6 +50,72 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260515-release-wip"></a>
+## 2026-05-15 发版：工作区归并 — 平台级验收、evolution closure、技能与文档
+
+> **发版** `sp-v5.0.7-xia-2026-05-15-01`（提交短 hash 以该 tag 指向对象为准）
+
+### 结论
+
+把 `xia/cache-package-5.0.7` 上积压的未提交改动一次性纳入版本控制并合入 **main**：强化 **Stop** 侧 `test-acceptance-gate`（含平台发版路径）、`workflow-bootstrap-gate` 与相关 hook 小修、`check-evolution` / `evolution-index-common` / `check-evolution-closure.sh`；`skills/using-superpowers` 等与阶段门禁对齐的增补；新增 **平台版本** `version-test-template` 片段与 `test-platform-release-acceptance.sh`；根目录 **fork 级复盘** `LESSONS.md` 与 **Clockworkman** 内稿 `docs/clockworkman-product-launch.md`；删除冗余根 `CHANGELOG.md`（以 `changelogs.md` 为真源）。
+
+### 验证
+
+- `bash tests/claude-code/test-workflow-bootstrap-gate.sh`
+- `bash tests/claude-code/test-workflow-phase-auto.sh`
+- `bash tests/claude-code/test-spec-gate-precheck.sh`
+- `bash tests/claude-code/test-check-evolution.sh`
+- `bash tests/claude-code/test-version-pr-doc-contract.sh`
+- `bash tests/claude-code/test-active-pr-resolution.sh`
+- `bash tests/claude-code/test-platform-release-acceptance.sh`
+
+### 审查 / 风险
+
+- `docs/clockworkman-product-launch.md` 为内部产品叙事稿，对外 fork 若需精简可后续单 PR 移入 `docs/private/` 或拆库。
+
+---
+
+<a id="sec-20260514-main-workflow-gates"></a>
+## 2026-05-14 **main** 上 UserPromptSubmit 门禁纠偏 + 阶段自动化：`workflow-bootstrap-gate` / `workflow-phase-auto`；`feat/pv|wv|chatbobi-v…` 与 docs 版本根对齐
+
+> **Changelog 补录** — 工作区记录 `commit` **`d560dcd`**（发版打 `sp-v5.0.7-xia-*` 时可把本行改成正式 **发版** 引用块并合并叙述）。
+
+### 结论
+
+解决 ChatBobi 等业务仓库在 **`main`** 上、**需求沟通 / brainstorming** 阶段仍被 **`workflow-bootstrap-gate`** 当成「要写实现」而 **误拦 Submit** 的问题：改为 **多条件放行**（窄意图、布局/体验话术、`.superpowers/workflow-phase` 早期阶段 token、`git` 白名单路径等），并保留对 **`src/`、`app/`** 等硬实现话术的拦截；**功能分支**命名与 **`docs/` 版本目录**解析与 `acceptance-order-common` 一致（支持 **`feat/pv…`、`feat/wv…`、`feat/chatbobi-v…`**）。另增 **`workflow-phase-auto`**：按用户提示 **自动创建/更新** `.superpowers/workflow-phase`（含防误降、**仅 phase 文件** 不触发「白名单工作区」短路），夏老板无需手敲 `mkdir`/`echo`。
+
+### 变更范围
+
+- **hooks**
+  - `hooks/workflow-bootstrap-gate`（**新增**；ChatBobi 原 `hooks-backup` 副本逻辑迁入真源并增强）
+  - `hooks/workflow-phase-auto`（**新增**；UserPromptSubmit 侧效、不输出、不阻断）
+  - `hooks/acceptance-order-common` — 新增 `resolve_version_dir_from_branch`（分支后缀与 `docs/` 版本根 **大小写不敏感** basename 对齐）
+- **skills**
+  - `skills/using-superpowers/SKILL.md` — Project 根、`workflow-phase` 自动化与手改兜底说明
+  - `skills/brainstorming/SKILL.md`、`skills/writing-plans/SKILL.md` — 与阶段 hook 对齐的一小段
+- **tests**
+  - `tests/claude-code/test-workflow-bootstrap-gate.sh`
+  - `tests/claude-code/test-workflow-phase-auto.sh`
+- **仓库卫生**
+  - `.gitignore` — `.tmp-wf-bootstrap-tests/`（测试临时目录）
+- **ChatBobi 部署面（Runtime Sync 受管；真源仍在 fork）**
+  - `docs/superpowers-local/MANAGED_FILES.txt` — 纳入 `hooks/workflow-bootstrap-gate`、`hooks/workflow-phase-auto`
+  - `.claude/settings.local.json` — `workflow-bootstrap-gate` 经 `run-superpowers-hook`；**新增** `workflow-phase-auto` 且排在 bootstrap **之前**；删除 `docs/scripts/hooks-backup/workflow-bootstrap-gate` 重复副本以免优先命中旧脚本
+
+### 验证
+
+- `bash -n hooks/workflow-bootstrap-gate hooks/workflow-phase-auto`
+- `bash tests/claude-code/test-workflow-bootstrap-gate.sh`
+- `bash tests/claude-code/test-workflow-phase-auto.sh`
+- `docs/scripts/sync-superpowers-fork.sh status latest`（overlay 与 installed cache **IN_SYNC**）
+
+### 审查 / 风险
+
+- **`workflow-phase-auto`** 依赖提示词 **正则命中**；未命中时仍可 **手改** `.superpowers/workflow-phase`。
+- **阶段性放行**与 **布局话术放行** 过宽可能削弱「禁止 main 写实现」纪律；已通过 **硬实现** 子串与 **白名单路径** 规则收敛；若线上仍有误拦/误放，继续收紧正则或补测试夹具。
+
+---
 
 <a id="sec-20260430-figma-read-mcp-dual"></a>
 ## 2026-04-30 `/figma-read`：官方 `figma` 与 `figma-desktop` 双 MCP（文档）

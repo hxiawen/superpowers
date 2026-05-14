@@ -51,9 +51,15 @@ evo_count_table_candidates() {
       }
       occurrences = trim($4) + 0
       st = lc(trim($5))
-      # Only rows still awaiting human evolution decision: pending | candidate,
-      # and occurrences threshold met. Adopted / closed rows must not inflate the hook count.
-      if (occurrences >= 2 && (st == "candidate" || st == "pending")) {
+      # Only rows still awaiting human evolution decision: pending | candidate (prefix match),
+      # occurrences threshold met. Adopted / recorded / closed rows must not inflate the hook count.
+      if (occurrences < 2) {
+        next
+      }
+      if (st ~ /^adopted(\s|\(|$)/ || st ~ /^not_adopted(\s|\(|$)/ || st ~ /^not adopted(\s|\(|$)/ || st ~ /^recorded(\s|\(|$)/) {
+        next
+      }
+      if (st ~ /^candidate(\s|\(|$)/ || st ~ /^pending(\s|\(|$)/) {
         count++
       }
     }
