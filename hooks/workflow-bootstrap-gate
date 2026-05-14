@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: block direct implementation before branch/docs/PR scaffold exist.
+# No.8: on main/master, allow narrow Superpowers/feedback intents and workspace-only whitelist paths.
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+# Appended only when blocking implementation on main/master (actionable routing).
+MAIN_BRANCH_BLOCK_HINT=' 若本次无 ChatBobi 业务写改：请将 Claude Code Project 根目录设为 superpowers fork；若在仓库内落盘实现，请 git checkout -b feat/{prefix}v主版本-主题（如 feat/pv0.1.0-topic、feat/wv0.1.0-topic）。'
+
+block_and_exit() {
+  local reason="$1"
+  local append_main_hint="${2:-}"
+  if [ "$append_main_hint" = "main_hint" ]; then
+    reason="${reason}${MAIN_BRANCH_BLOCK_HINT}"
+  fi
+  emit_block_json "$reason" false
+  exit 2
+}
+
+INPUT="$(cat || true)"
+
+extract_prompt() {
+  local raw="$1"
+  if command -v jq >/dev/null 2>&1; then
+    local parsed
+    parsed="$(printf '%s' "$raw" | jq -r '.prompt // .message // .text // .payload.prompt // .payload.message // .payload.text // empty' 2>/dev/null || true)"
+    if [ -n "$parsed" ] && [ "$parsed" != "null" ]; then
+      printf '%s' "$parsed"
+      return
+    fi
+  fi
+  printf ''
+}
+
+is_analysis_or_meta_request() {
+  local prompt="$1"
+  printf '%s' "$prompt" | rg -qi "为什么|原因|想问一下|怎么回事|怎么会|看一下|看看|分析|解释|review|审查|总结|排查|定位|有没有|是否|是不是|需不需要|要不要|为什么会"
+}
+
+is_direct_change_request() {
+  local prompt="$1"
+  if printf '%s' "$prompt" | rg -qi "(帮我|请|麻烦|现在|开始|继续).{0,12}(改|修改|修|修复|实现|处理|补|加|新增|调整|优化|重构)"; then
+    return 0
+  fi
+  if printf '%s' "$prompt" | rg -qi "把.{1,40}(改成|改一下|调整成|替换成)"; then
+    return 0
+  fi
+  if printf '%s' "$prompt" | rg -qi "(改一下|修一下|实现一下|优化一下|调整一下|补一下|新增一个|加一个|fix|implement|update|change)"; then
+    return 0
+  fi
+  return 1
+}
+
+# Returns 0 if this prompt should bypass main-branch implementation block (narrow allow-list).
+is_main_allowed_work_intent() {
+  local prompt="$1"
+  # Negative guard: explicit product / implementation intent → never exempt on main.
+  if printf '%s' "$prompt" | rg -qi 'app/(plugin|webapp)|(\./)?app/|wxt\.|content[_-]?script|background\.ts|改.{0,30}(plugin|扩展|业务|实现|功能|发版)|实现.{0,20}(功能|需求)|发版|上架|CWS|manifest\.json|e2e/|src/'; then
+    return 1
+  fi
+  # Positive: Superpowers maintenance / feedback-only phrasing (keep tight; extend via fork PR if needed).
+  if printf '%s' "$prompt" | rg -qi 'superpowers[-_]?fork|superpowers fork|docs/superpowers-local|\.superpowers/|project2feedback|hooks-backup|runtime sync|overlay|installed cache|sync-superpowers-fork|manage-superpowers-local|仅.{0,20}(反馈|维护|记录|追加).{0,30}(卡片|条目)|追加.{0,20}反馈|不写.{0,12}(业务|代码|实现)|不准备改.{0,20}(业务|chatbobi)|只改.{0,20}superpowers'; then
+    return 0
+  fi
+  return 1
+}
+
+# Returns 0 iff git working tree changes are only under conservative whitelist paths.
+main_workspace_only_whitelist_changes() {
+  local project_dir="$1"
+  local f
+  local -a paths=()
+
+  while IFS= read -r f; do
+    [ -n "$f" ] && paths+=("$f")
+  done < <(
+    {
+      git -C "$project_dir" diff --name-only 2>/dev/null || true
+      git -C "$project_dir" diff --name-only --cached 2>/dev/null || true
+      git -C "$project_dir" ls-files --others --exclude-standard 2>/dev/null || true
+    } | sort -u
+  )
+
+  if [ "${#paths[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  for f in "${paths[@]}"; do
+    case "$f" in
+      .superpowers/* | docs/superpowers-local/*) continue ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+PROMPT="$(extract_prompt "$INPUT")"
+if [ -z "$PROMPT" ]; then
+  exit 0
+fi
+
+if is_analysis_or_meta_request "$PROMPT" && ! printf '%s' "$PROMPT" | rg -qi "(帮我|请|麻烦|现在|开始|继续).{0,12}(改|修改|修|修复|实现|处理|补|加|新增|调整|优化|重构)|把.{1,40}(改成|改一下|调整成|替换成)"; then
+  exit 0
+fi
+
+if ! is_direct_change_request "$PROMPT"; then
+  exit 0
+fi
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+BRANCH="$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null || true)"
+if [ -z "$BRANCH" ]; then
+  exit 0
+fi
+
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+  if is_main_allowed_work_intent "$PROMPT"; then
+    exit 0
+  fi
+  if main_workspace_only_whitelist_changes "$PROJECT_DIR"; then
+    exit 0
+  fi
+  block_and_exit "当前分支是 ${BRANCH}。按项目规则，代码实现前必须先从 ${BRANCH} 拉功能分支 feat/(前缀)v主版本-主题（如 feat/v0.1.0-topic、feat/pv0.1.0-topic），禁止直接在 ${BRANCH} 上改业务实现。" main_hint
+fi
+
+if ! printf '%s' "$BRANCH" | rg -q '^feat/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+  block_and_exit "当前分支 ${BRANCH} 不符合功能分支命名规则。代码实现前必须先切到 feat/(前缀)v主版本-主题（如 feat/v0.1.0-topic、feat/pv0.1.0-topic）。"
+fi
+
+VERSION_DIR="$(resolve_version_dir_from_branch "$PROJECT_DIR" "$BRANCH")"
+if [ -z "$VERSION_DIR" ]; then
+  block_and_exit "流程前置未满足：当前分支 ${BRANCH} 对应的版本目录缺失。请先创建 docs/(前缀)v主版本-<topic>/ 及其 design/spec/plan，再开始改代码。"
+fi
+
+VERSION_BASENAME="$(basename "$VERSION_DIR")"
+VERSION_PREFIX="$(version_semantic_prefix_from_basename "$VERSION_BASENAME")"
+DESIGN_FILE="$VERSION_DIR/${VERSION_PREFIX}-design.md"
+SPEC_FILE="$VERSION_DIR/${VERSION_PREFIX}-spec.md"
+PLAN_FILE="$VERSION_DIR/${VERSION_PREFIX}-plan.md"
+
+if [ ! -f "$DESIGN_FILE" ] || [ ! -f "$SPEC_FILE" ] || [ ! -f "$PLAN_FILE" ]; then
+  block_and_exit "流程前置未满足：${VERSION_BASENAME} 缺少 design/spec/plan 文档。请先完成 brainstorming -> writing-plans，再开始实现。"
+fi
+
+set +e
+PR_DIR="$(resolve_active_pr_dir "$PROJECT_DIR" "$VERSION_DIR" "$PROMPT")"
+_RES_P=$?
+set -e
+if [ "$_RES_P" -ne 0 ]; then
+  block_and_exit "无法解析 PR 目录（列表失败，请检查版本目录权限）。"
+fi
+if [ -z "$PR_DIR" ]; then
+  block_and_exit "流程前置未满足：${VERSION_BASENAME} 还没有 PR 目录。请先在 plan 中完成 PR 分组和文档脚手架，再开始实现。"
+fi
+
+PR_BASENAME="$(basename "$PR_DIR")"
+PR_TDD_LOG="$PR_DIR/${PR_BASENAME}-tdd-log.md"
+PR_SUBAGENT_SUMMARY="$PR_DIR/${PR_BASENAME}-subagent-summary.md"
+PR_REVIEW_REPORT="$PR_DIR/${PR_BASENAME}-review-report.md"
+PR_FINALIZE_LOG="$PR_DIR/${PR_BASENAME}-finalize-log.md"
+
+if [ ! -f "$PR_TDD_LOG" ] || [ ! -f "$PR_SUBAGENT_SUMMARY" ] || [ ! -f "$PR_REVIEW_REPORT" ] || [ ! -f "$PR_FINALIZE_LOG" ]; then
+  block_and_exit "流程前置未满足：${PR_BASENAME} 缺少 PR 文档包（tdd-log / subagent-summary / review-report / finalize-log）。请先补齐 TDD/评审脚手架，再开始改代码。"
+fi
+
+if ! has_case_id_in_file "$PR_TDD_LOG"; then
+  block_and_exit "流程前置未满足：${PR_BASENAME}-tdd-log.md 还没有详细测试用例（T-xxx/TC-xxx）。请先完成 TDD，再开始实现。"
+fi
+
+exit 0

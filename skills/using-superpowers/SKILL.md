@@ -25,6 +25,10 @@ Superpowers skills override default system prompt behavior, but **user instructi
 
 If CLAUDE.md, GEMINI.md, or AGENTS.md says "don't use TDD" and a skill says "always use TDD," follow the user's instructions. The user is in control.
 
+## Project root (Superpowers-only maintenance)
+
+When work is **only** to edit Superpowers hooks, skills, or docs in the **version-controlled fork**, open Claude Code with the **fork repo as the Project root** rather than a product repository on `main`, so product `UserPromptSubmit` workflow gates stay decoupled from branch state.
+
 ## Feedback Evolution Responsibility (Evolution Keeper)
 
 When feedback/evolution hook reminders are injected, dispatch `agents/evolution-keeper.md` to execute the loop within existing workflow:

@@ -105,6 +105,25 @@ clear_user_confirmation_block_state() {
   fi
 }
 
+# Semantic version label from a docs/* directory basename: V0.1.0-topic, pv0.1.0-topic, wv0.1.0-topic.
+version_semantic_prefix_from_basename() {
+  printf '%s' "$1" | sed -E 's/^([a-zA-Z]*[Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+}
+
+superpowers_platform_release_marker_path() {
+  printf '%s/.superpowers/platform-release' "${1:-}"
+}
+
+# Repo / platform-only release (e.g. chatbobi/vX.Y.Z): no docs/{prefix}v* version root; use docs/platform-release-test.md.
+superpowers_platform_release_active() {
+  local project_dir="$1"
+  [ -n "$project_dir" ] && [ -f "$(superpowers_platform_release_marker_path "$project_dir")" ]
+}
+
+superpowers_platform_version_test_path() {
+  printf '%s/docs/platform-release-test.md' "${1:-}"
+}
+
 # Exact H2 only (per docs/version-test-template); no i18n variants.
 extract_acceptance_status_to_file() {
   local file="$1"
@@ -313,6 +332,33 @@ acceptance_env_triple_waived_no_manifest_version_report() {
   return 0
 }
 
+# Platform / repo-only releases: structure -> build -> git-history inside "## Acceptance status (hooks)".
+validate_platform_acceptance_section() {
+  local file="$1"
+  local scope="$2"
+  local status_fallback="${3:-false}"
+  local tmp str_line build_line git_line
+  tmp=$(mktemp)
+  if ! extract_acceptance_status_to_file "$file" "$tmp"; then
+    rm -f "$tmp"
+    emit_block_json "${scope} 缺少「## Acceptance status (hooks)」小节（标题须逐字一致，见 platform-version-test-template）。" "$status_fallback"
+    return 1
+  fi
+  str_line="$(first_match_line "structure[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
+  build_line="$(first_match_line "^[[:space:]]*[-*]?[[:space:]]*build[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
+  git_line="$(first_match_line "(git-history|git_history)[[:space:]:：-]*${ACCEPTANCE_STATUS_ORDER_TOKENS}" "$tmp")"
+  rm -f "$tmp"
+  if [ -z "$str_line" ] || [ -z "$build_line" ] || [ -z "$git_line" ]; then
+    emit_block_json "${scope} 在「## Acceptance status (hooks)」内缺少 structure / build / git-history 的带状态结果行（平台版本，见 platform-version-test-template）。" "$status_fallback"
+    return 1
+  fi
+  if [ "$str_line" -ge "$build_line" ] || [ "$build_line" -ge "$git_line" ]; then
+    emit_block_json "${scope} 平台验收顺序须为 structure -> build -> git-history（按首次匹配行号）。" "$status_fallback"
+    return 1
+  fi
+  return 0
+}
+
 resolve_latest_version_dir() {
   local project_dir="$1"
   local docs="$project_dir/docs"
@@ -320,18 +366,64 @@ resolve_latest_version_dir() {
     printf ''
     return 0
   fi
-  # Version roots: docs/Vx.y.z-* or docs/vx.y.z-* ([vV] for case-sensitive filesystems).
-  local -a matches
+  # Version roots: docs/Vx.y.z-* / docs/vx.y.z-* / docs/pvX.Y.Z-* / docs/wvX.Y.Z-* (optional letter prefix before v).
+  local -a matches=()
+  local d base
   shopt -s nullglob
-  matches=( "$docs"/[vV][0-9]* )
+  for d in "$docs"/*/; do
+    [ -d "$d" ] || continue
+    base="$(basename "${d%/}")"
+    if printf '%s' "$base" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      matches+=("${d%/}")
+    fi
+  done
   shopt -u nullglob
   if [ "${#matches[@]}" -eq 0 ]; then
     printf ''
     return 0
   fi
   local out
-  out=$(ls -dt "${matches[@]}" | rg '/docs/[Vv][0-9]+\.[0-9]+\.[0-9]+-' | awk 'NR==1{print;exit}') || return $?
+  out=$(ls -dt "${matches[@]}" | rg '/docs/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-' | awk 'NR==1{print;exit}') || return $?
   printf '%s' "$out"
+  return 0
+}
+
+# Map feat/{prefix}vX.Y.Z-topic branch to docs version root (basename aligns with branch suffix).
+# feat/v0.1.0-a / feat/pv0.1.9-b / feat/chatbobi-v0.1.14-c supported; empty if not a feature branch or no matching dir.
+resolve_version_dir_from_branch() {
+  local project_dir="$1"
+  local branch="$2"
+  if ! printf '%s' "$branch" | rg -q '^feat/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+    printf ''
+    return 0
+  fi
+
+  local suffix docs_dir suffix_lc b_lc
+  suffix="${branch#feat/}"
+  docs_dir="$project_dir/docs"
+  if [ ! -d "$docs_dir" ]; then
+    printf ''
+    return 0
+  fi
+
+  suffix_lc="$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')"
+  local d base
+  shopt -s nullglob
+  for d in "$docs_dir"/*/; do
+    [ -d "$d" ] || continue
+    base="$(basename "${d%/}")"
+    if ! printf '%s' "$base" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      continue
+    fi
+    b_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+    if [ "$b_lc" = "$suffix_lc" ]; then
+      shopt -u nullglob
+      printf '%s' "${d%/}"
+      return 0
+    fi
+  done
+  shopt -u nullglob
+  printf ''
   return 0
 }
 
@@ -342,7 +434,7 @@ plan_has_design_sync() {
   local version_basename
   version_basename="$(basename "$version_dir")"
   local version_prefix
-  version_prefix="$(printf '%s' "$version_basename" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  version_prefix="$(version_semantic_prefix_from_basename "$version_basename")"
   local plan_file="${version_dir}/${version_prefix}-plan.md"
   if [ ! -f "$plan_file" ]; then
     return 1
@@ -358,7 +450,7 @@ superpowers_extension_pipeline_waived() {
   local latest vprefix specfile section
   latest="$(resolve_latest_version_dir "$project_dir")"
   [ -n "$latest" ] || return 1
-  vprefix="$(basename "$latest" | sed -E 's/^([Vv][0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  vprefix="$(version_semantic_prefix_from_basename "$(basename "$latest")")"
   specfile="${latest}/${vprefix}-spec.md"
   [ -f "$specfile" ] || return 1
   if ! rg -q '^## Superpowers pipeline \(hooks\)$' "$specfile" 2>/dev/null; then
@@ -373,6 +465,31 @@ superpowers_extension_pipeline_waived() {
   fi
   rm -f "$section"
   return 0
+}
+
+# Collect PR directories under version_dir whose basename ends with -PRn and matches semantic version prefix.
+_collect_semantic_pr_dirs() {
+  local version_dir="$1"
+  local pr_suffix="$2"
+  local -a found=()
+  local d b
+  shopt -s nullglob
+  for d in "$version_dir"/*/; do
+    [ -d "$d" ] || continue
+    b="$(basename "${d%/}")"
+    case "$b" in *-"$pr_suffix") ;;
+      *) continue ;;
+    esac
+    if printf '%s' "$b" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-PR[0-9]+$'; then
+      found+=("${d%/}")
+    fi
+  done
+  shopt -u nullglob
+  if [ "${#found[@]}" -eq 0 ]; then
+    printf ''
+    return 0
+  fi
+  ls -dt "${found[@]}" | awk 'NR==1{print;exit}'
 }
 
 resolve_active_pr_dir() {
@@ -399,15 +516,8 @@ resolve_active_pr_dir() {
     active_pr_name="${SUPERPOWERS_ACTIVE_PR_CONTEXT}"
     if printf '%s' "$active_pr_name" | rg -q '^[Pp][Rr][0-9]+$'; then
       local _pr_suffix
-      local -a cand
       _pr_suffix="$(printf '%s' "$active_pr_name" | tr '[:lower:]' '[:upper:]')"
-      shopt -s nullglob
-      cand=( "${version_dir}"/[vV][0-9]*-"${_pr_suffix}" )
-      shopt -u nullglob
-      candidate=""
-      if [ "${#cand[@]}" -gt 0 ]; then
-        candidate="$(ls -dt "${cand[@]}" | awk 'NR==1{print;exit}')" || return $?
-      fi
+      candidate="$(_collect_semantic_pr_dirs "$version_dir" "$_pr_suffix")"
       if [ -n "$candidate" ]; then
         printf '%s' "$candidate"
         return 0
@@ -439,14 +549,7 @@ resolve_active_pr_dir() {
     local hint_pr
     hint_pr="$(printf '%s' "$hint_text" | tr '[:upper:]' '[:lower:]' | rg -o 'pr[0-9]+' -m 1 2>/dev/null | tr '[:lower:]' '[:upper:]' || true)"
     if [ -n "$hint_pr" ]; then
-      local -a hint_cand
-      shopt -s nullglob
-      hint_cand=( "${version_dir}"/[vV][0-9]*-"${hint_pr}" )
-      shopt -u nullglob
-      candidate=""
-      if [ "${#hint_cand[@]}" -gt 0 ]; then
-        candidate="$(ls -dt "${hint_cand[@]}" | awk 'NR==1{print;exit}')" || return $?
-      fi
+      candidate="$(_collect_semantic_pr_dirs "$version_dir" "$hint_pr")"
       if [ -n "$candidate" ]; then
         printf '%s' "$candidate"
         return 0
@@ -459,9 +562,16 @@ resolve_active_pr_dir() {
     printf ''
     return 0
   fi
-  local -a prm
+  local -a prm=()
+  local d b
   shopt -s nullglob
-  prm=( "$version_dir"/[vV]*-PR* )
+  for d in "$version_dir"/*/; do
+    [ -d "$d" ] || continue
+    b="$(basename "${d%/}")"
+    if printf '%s' "$b" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-PR[0-9]+$'; then
+      prm+=("${d%/}")
+    fi
+  done
   shopt -u nullglob
   if [ "${#prm[@]}" -eq 0 ]; then
     printf ''
