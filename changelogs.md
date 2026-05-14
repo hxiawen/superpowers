@@ -9,6 +9,7 @@
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
+| **ChatBobi 仓库**：Runtime Sync **首次落盘**（`MANAGED_FILES.txt` / `capture`→overlay / `deploy latest`）、`.gitignore` 放行清单；根 `changelogs.md` 写明 **「完整 Runtime Sync」** 默认口径（含落盘 ChatBobi，非仅 fork 发版） | [→ 打开](#sec-20260515-chatbobi-runtime-sync) |
 | **2026-05-15 发版**：工作区归并 — `test-acceptance-gate` 平台验收路径、evolution closure 脚本、`using-superpowers` 增补、fork `LESSONS.md`、Clockworkman 内稿、模板与回归测试 | [→ 打开](#sec-20260515-release-wip) |
 | **main 上 UserPromptSubmit 门禁纠偏 + 阶段自动化**：不误拦 brainstorming/布局话术；`workflow-phase-auto` 写 `.superpowers/workflow-phase`；`feat/pv|wv|chatbobi-v…` 与 docs 版本根对齐 | [→ 打开](#sec-20260514-main-workflow-gates) |
 | **Spec「Superpowers pipeline」**：`Full extension acceptance pipeline` Yes/No；`No` 豁免三测顺序 / manifest 报告 / 包版本漂移；Figma 仍按 plan | [→ 打开](#sec-20260507-superpowers-pipeline-spec) |
@@ -50,6 +51,45 @@
 将 **superpowers/5.0.7** 的重要变更 **推送到 GitHub** 并打标签（`sp-v5.0.7-xia-YYYY-MM-DD-序号`）时，在正文里**新写一节**（或补充一节）：**标题用「这版在解决什么」人话**（见上表体例），**不要**整节都叫「工作报告」。插入位置：本**维护说明** 的**紧后**、所有「按发版/专题」小节的**最上**；并把上表**加一行**速览。正文里建议首行用引用块写 **发版** `tag` 与 `commit`（短 hash）。正文章节**至少**包含：结论一句、改动了哪些**模块**、怎么**验证**、有无**审查/风险**。
 
 > 新小节标题请与上表**「这版在解决什么」**列**同一套说法**，这样目录与正文互相找得到。
+
+<a id="sec-20260515-chatbobi-runtime-sync"></a>
+## 2026-05-15 ChatBobi：Runtime Sync 首次落盘 +「完整 Runtime Sync」书面约定
+
+> **关联**：夏 fork 发版线 **`sp-v5.0.7-xia-2026-05-15-01`**；ChatBobi 侧为 **消费真源** 的落地与文档，**非** fork 内代码变更。详细长文与 Agent 默认口径见 ChatBobi 根目录 **`changelogs.md`**（路径：`/Users/harry/Documents/chatbobi/changelogs.md`）。
+
+### 结论
+
+在 **ChatBobi** 仓库内首次接通 **Superpowers Runtime Sync**：建立 `docs/superpowers-local/MANAGED_FILES.txt`（82 条受管路径，覆盖 `hooks/`、`skills/`、`commands/`、`agents/`、`scripts/`），执行 **`capture` → `status` → `backup latest` → `deploy latest` → `status`**，使 overlay 与已装 **`~/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/`** 全量 **IN_SYNC**；修正 `.gitignore` 使 **`MANAGED_FILES.txt`** 与 **`LOCAL_RELEASES.md`** 可入库，**overlay** 与 **`backups/*.tar.gz`** 不入库。另在 ChatBobi 根 **`changelogs.md`** 写入本次操作留痕，并单立 **「完整 Superpowers Runtime Sync」** 约定：以后口头「跑完 Runtime Sync」**默认包含** ChatBobi 内 **落盘（capture）** 与 **deploy 到本机缓存**，**不等同于**「仅在 fork 上 push/tag」。
+
+### ChatBobi 变更要点（路径）
+
+| 路径 | 说明 |
+|------|------|
+| `docs/superpowers-local/MANAGED_FILES.txt` | 受管列表；由真源 fork 扫描生成（排除 `.DS_Store`）。 |
+| `docs/superpowers-local/LOCAL_RELEASES.md` | 本地操作留痕；内链 ChatBobi 根 `changelogs.md`。 |
+| `docs/superpowers-local/overlay/` | `capture` 产物；**git 忽略**。 |
+| `docs/superpowers-local/backups/*.tar.gz` | `backup` 产物；**git 忽略**。 |
+| `.gitignore` | `docs/superpowers-local/*` + 例外放行上述两个 md。 |
+| `changelogs.md`（ChatBobi 根） | 仓库级叙事 + **完整 Runtime Sync** 步骤表与「仅 fork」对照。 |
+| `docs/CHANGELOG.md` | 增加指向根 `changelogs.md` 的导航。 |
+
+### Git（ChatBobi / `feat/pv0.1.13-dom-adapt`）
+
+- `42a41dd` — `chore(superpowers): add MANAGED_FILES + LOCAL_RELEASES; gitignore overlay only`
+- `a21c610` — `docs: add repo changelogs.md — Runtime Sync 2026-05-15 + full-sync policy`
+- `da30db5` — `docs(superpowers-local): LOCAL_RELEASES link to repo changelogs`
+- 已 `git push origin feat/pv0.1.13-dom-adapt`
+
+### 验证
+
+- `cd /Users/harry/Documents/chatbobi && docs/scripts/sync-superpowers-fork.sh status` — 受管文件均为 **IN_SYNC**。
+
+### 审查 / 风险
+
+- **受管范围**当前未含 fork 侧 `tests/`；若需缓存与 fork 测试脚本完全一致，须在 `MANAGED_FILES.txt` 增补后再 `capture` + `deploy`。
+- **术语**：夏 fork 本文件继续记 **真源** 发版；ChatBobi 根 `changelogs.md` 记 **消费侧** 同步与约定，避免两处抢同一叙事。
+
+---
 
 <a id="sec-20260515-release-wip"></a>
 ## 2026-05-15 发版：工作区归并 — 平台级验收、evolution closure、技能与文档
