@@ -68,7 +68,7 @@ fi
 
 # No version marker but acceptance tests were recorded — block
 emit_block_json_with_meta \
-  "mocktest/devicetest/autotest 验收已执行但未报告构建版本号。必须从 manifest.json 读取并报告完整版本号（如 0.1.10.42）后才可完成。命令：grep '\"version\"' src/.output/chrome-mv3/manifest.json" \
+  "mocktest/devicetest/autotest 验收已执行但未报告构建版本号。必须从 manifest.json 读取并报告完整版本号（如 0.1.10.42）后才可完成。示例：grep '\"version\"' app/plugin/.output/chrome-mv3/manifest.json（若项目为旧布局则用 src/.output/chrome-mv3/manifest.json）" \
   "false" \
   "agent" \
   "agent_remediation_required" \

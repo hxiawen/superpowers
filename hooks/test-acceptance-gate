@@ -260,14 +260,22 @@ fi
 
 # Browser-extension artifact version gate (best-effort):
 # prevent devicetest validating stale production bundles.
+# Prefer ChatBobi layout (app/plugin); fall back to legacy src + repo-root .output.
 if ! superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
-  SRC_PKG_JSON="$PROJECT_DIR/src/package.json"
-  OUTPUT_MANIFEST="$PROJECT_DIR/.output/chrome-mv3/manifest.json"
-  if [ -f "$SRC_PKG_JSON" ] && [ -f "$OUTPUT_MANIFEST" ] && command -v jq >/dev/null 2>&1; then
+  SRC_PKG_JSON=""
+  OUTPUT_MANIFEST=""
+  if [ -f "$PROJECT_DIR/app/plugin/package.json" ] && [ -f "$PROJECT_DIR/app/plugin/.output/chrome-mv3/manifest.json" ]; then
+    SRC_PKG_JSON="$PROJECT_DIR/app/plugin/package.json"
+    OUTPUT_MANIFEST="$PROJECT_DIR/app/plugin/.output/chrome-mv3/manifest.json"
+  elif [ -f "$PROJECT_DIR/src/package.json" ] && [ -f "$PROJECT_DIR/.output/chrome-mv3/manifest.json" ]; then
+    SRC_PKG_JSON="$PROJECT_DIR/src/package.json"
+    OUTPUT_MANIFEST="$PROJECT_DIR/.output/chrome-mv3/manifest.json"
+  fi
+  if [ -n "$SRC_PKG_JSON" ] && [ -n "$OUTPUT_MANIFEST" ] && [ -f "$SRC_PKG_JSON" ] && [ -f "$OUTPUT_MANIFEST" ] && command -v jq >/dev/null 2>&1; then
     SRC_VERSION="$(jq -r '.version // empty' "$SRC_PKG_JSON" 2>/dev/null || true)"
     MANIFEST_VERSION="$(jq -r '.version // empty' "$OUTPUT_MANIFEST" 2>/dev/null || true)"
     if [ -n "$SRC_VERSION" ] && [ -n "$MANIFEST_VERSION" ] && [ "$SRC_VERSION" != "$MANIFEST_VERSION" ]; then
-      block_and_exit "生产构建版本号与源码版本号不一致（src/package.json=${SRC_VERSION}, manifest=${MANIFEST_VERSION}）。请先重建产物并校正版本。"
+      block_and_exit "生产构建版本号与源码版本号不一致（package.json=${SRC_VERSION}, manifest=${MANIFEST_VERSION}）。请先重建产物并校正版本。"
     fi
   fi
 fi

@@ -66,10 +66,13 @@ Do not add `autotest: …` to the PR `tdd-log` for hook purposes; that file is f
 - mode used (only-test / test-and-fix)
 - scope
 - command(s) executed
-- **build version (from `src/.output/chrome-mv3/manifest.json` or `src/package.json` — must report at startup before any test execution)**
+- **build version (MUST read from `app/plugin/.output/chrome-mv3/manifest.json` after `npm run build` completes — `buildNumber` auto-increments each build; reading before build reports a stale version)**
+- **bundle size (from build output `Σ Total size` line — required for Quality Gate monitoring; flag any single-PR increase > 5KB vs a prior baseline)**
 - pass/fail summary
 - failed cases with evidence
 - rerun status
+
+When reporting version + bundle together, use one line, for example: `Build: X.Y.Z.N | Bundle: XXX kB`. Match project wording in `Vx.y.z-test.md` if templates use `构建版本` / `包体`.
 
 ## Completion Rule
 

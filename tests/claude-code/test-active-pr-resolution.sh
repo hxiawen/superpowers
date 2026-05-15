@@ -89,5 +89,30 @@ assert_path_eq "$resolved" "$PV_VERSION" "resolve_latest_version_dir finds docs/
 resolved="$(SUPERPOWERS_ACTIVE_PR_CONTEXT="PR1" resolve_active_pr_dir "$PV_ROOT" "$PV_VERSION" "")"
 assert_path_eq "$resolved" "$PV_PR" "resolve_active_pr_dir finds pv*-PR* under prefixed version root"
 
+# 8) Nested docs/<product>/<semantic>/ (ChatBobi v0.1.14+)
+NEST_ROOT="$TMP_DIR/nested-project"
+NEST_VERSION="$NEST_ROOT/docs/plugin/pv0.4.0-dom-adapt"
+NEST_PR="$NEST_VERSION/pv0.4.0-PR1"
+mkdir -p "$NEST_PR" "$NEST_ROOT/.claude"
+touch "$NEST_PR/pv0.4.0-PR1-tdd-log.md"
+resolved="$(resolve_latest_version_dir "$NEST_ROOT")"
+assert_path_eq "$resolved" "$NEST_VERSION" "resolve_latest_version_dir finds docs/plugin/pv* nested root"
+resolved="$(SUPERPOWERS_ACTIVE_PR_CONTEXT="PR1" resolve_active_pr_dir "$NEST_ROOT" "$NEST_VERSION" "")"
+assert_path_eq "$resolved" "$NEST_PR" "resolve_active_pr_dir under nested version root"
+
+# 9) Same basename shallow vs deep → deep wins (No.9 tie-break)
+DUP_ROOT="$TMP_DIR/dup-basename-project"
+DUP_SHALLOW="$DUP_ROOT/docs/pv0.5.0-same"
+DUP_DEEP="$DUP_ROOT/docs/plugin/pv0.5.0-same"
+mkdir -p "$DUP_DEEP" "$DUP_SHALLOW"
+touch "$DUP_SHALLOW/.keep" "$DUP_DEEP/.keep"
+# Shallow newer mtime must not win while deduping same basename
+touch -t 202501010101 "$DUP_DEEP/.keep"
+touch -t 202601010101 "$DUP_SHALLOW/.keep"
+resolved="$(resolve_latest_version_dir "$DUP_ROOT")"
+assert_path_eq "$resolved" "$DUP_DEEP" "same basename: deeper docs path wins for resolve_latest"
+resolved="$(resolve_version_dir_from_branch "$DUP_ROOT" "feat/pv0.5.0-same")"
+assert_path_eq "$resolved" "$DUP_DEEP" "same basename: deeper path for resolve_version_dir_from_branch"
+
 echo ""
 echo "=== active PR resolution checks passed ==="

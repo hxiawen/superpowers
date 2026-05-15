@@ -42,7 +42,7 @@ If any check fails: do not start. Return `BLOCKED` and ask for detailed test cas
 version-source preflight for extension projects (mandatory when applicable):
 
 - If project defines `scripts/bump-version.sh` + `.version-bump.json`, run drift check before devicetest.
-- If extension artifact exists at `.output/chrome-mv3/manifest.json`, ensure artifact `version` matches source version (`src/package.json` when present).
+- If extension artifact exists at `app/plugin/.output/chrome-mv3/manifest.json`, ensure artifact `version` matches source version (`app/plugin/package.json` when present).
 - If version drift is detected, block devicetest until version is corrected and artifact rebuilt.
 
 ## Required Output
@@ -53,11 +53,14 @@ Do not use PR `tdd-log` for these hook-visible status lines.
 ## Minimum Result Fields
 
 - command source path
-- **build version (from `src/.output/chrome-mv3/manifest.json` or `src/package.json` — must report at startup before any test execution)**
+- **build version (MUST read from `app/plugin/.output/chrome-mv3/manifest.json` after `npm run build` completes — `buildNumber` auto-increments each build; reading before build reports a stale version)**
+- **bundle size (from build output `Σ Total size` line — required for Quality Gate monitoring; flag any single-PR increase > 5KB vs a prior baseline)**
 - device matrix
 - executed checks
 - pass/fail summary
 - device-specific issues
+
+When reporting version + bundle together, use one line, for example: `Build: X.Y.Z.N | Bundle: XXX kB`. Match project wording in `Vx.y.z-test.md` if templates use `构建版本` / `包体`.
 
 ## Completion Rule
 

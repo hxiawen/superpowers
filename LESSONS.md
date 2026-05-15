@@ -10,7 +10,7 @@
 
 **具体耦合点**:
 - `skills/autotest/SKILL.md`、`mocktest/SKILL.md`、`devicetest/SKILL.md` — 硬编码 ChatBobi command 路径和 Chrome extension 构建产物路径
-- `hooks/build-version-report-guard` — 硬编码 `src/.output/chrome-mv3/manifest.json`
+- `hooks/build-version-report-guard` — 提示中的示例路径以 ChatBobi `app/plugin/.output/chrome-mv3/manifest.json` 为主，并注明旧布局 `src/.output/...`
 - `hooks/superpowers-runtime-sync-reminder` — 提到 "ChatBobi overlay"
 - `hooks/test-acceptance-gate` — Chrome extension 版本漂移检查
 

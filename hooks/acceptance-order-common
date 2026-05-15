@@ -359,6 +359,14 @@ validate_platform_acceptance_section() {
   return 0
 }
 
+# Path depth under docs/: docs/pv0.1.0-t/ => 1; docs/plugin/pv0.1.0-t/ => 2 (ChatBobi v0.1.14+ nests product segment).
+_docs_semantic_version_rel_depth() {
+  local docs_root="${1%/}"
+  local path="${2%/}"
+  local rel="${path#"${docs_root}/}"}"
+  printf '%s' "$rel" | awk -F/ '{print NF}'
+}
+
 resolve_latest_version_dir() {
   local project_dir="$1"
   local docs="$project_dir/docs"
@@ -366,24 +374,58 @@ resolve_latest_version_dir() {
     printf ''
     return 0
   fi
-  # Version roots: docs/Vx.y.z-* / docs/vx.y.z-* / docs/pvX.Y.Z-* / docs/wvX.Y.Z-* (optional letter prefix before v).
-  local -a matches=()
-  local d base
+  # Version roots: docs/<semantic>/ OR docs/<product>/<semantic>/ (same basename → prefer deeper path).
+  local -a raw=()
+  local d base parent
   shopt -s nullglob
   for d in "$docs"/*/; do
     [ -d "$d" ] || continue
     base="$(basename "${d%/}")"
     if printf '%s' "$base" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
-      matches+=("${d%/}")
+      raw+=("${d%/}")
+    fi
+  done
+  for d in "$docs"/*/*/; do
+    [ -d "$d" ] || continue
+    parent="$(basename "$(dirname "${d%/}")")"
+    # Skip docs/<versionDir>/… (e.g. PR dirs): second segment must be under a non-version product folder.
+    if printf '%s' "$parent" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      continue
+    fi
+    base="$(basename "${d%/}")"
+    if printf '%s' "$base" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      raw+=("${d%/}")
     fi
   done
   shopt -u nullglob
+  if [ "${#raw[@]}" -eq 0 ]; then
+    printf ''
+    return 0
+  fi
+  local -a matches=()
+  local i j bi bj di dj keep
+  for i in "${!raw[@]}"; do
+    keep=1
+    bi="$(basename "${raw[i]}")"
+    di="$(_docs_semantic_version_rel_depth "$docs" "${raw[i]}")"
+    for j in "${!raw[@]}"; do
+      [ "$i" -eq "$j" ] && continue
+      bj="$(basename "${raw[j]}")"
+      [ "$bi" = "$bj" ] || continue
+      dj="$(_docs_semantic_version_rel_depth "$docs" "${raw[j]}")"
+      if [ "$dj" -gt "$di" ]; then
+        keep=0
+        break
+      fi
+    done
+    [ "$keep" = 1 ] && matches+=("${raw[i]}")
+  done
   if [ "${#matches[@]}" -eq 0 ]; then
     printf ''
     return 0
   fi
   local out
-  out=$(ls -dt "${matches[@]}" | rg '/docs/[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-' | awk 'NR==1{print;exit}') || return $?
+  out=$(ls -dt "${matches[@]}" | rg '/docs/([^/]+/)?[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-' | awk 'NR==1{print;exit}') || return $?
   printf '%s' "$out"
   return 0
 }
@@ -398,7 +440,7 @@ resolve_version_dir_from_branch() {
     return 0
   fi
 
-  local suffix docs_dir suffix_lc b_lc
+  local suffix docs_dir suffix_lc
   suffix="${branch#feat/}"
   docs_dir="$project_dir/docs"
   if [ ! -d "$docs_dir" ]; then
@@ -407,7 +449,9 @@ resolve_version_dir_from_branch() {
   fi
 
   suffix_lc="$(printf '%s' "$suffix" | tr '[:upper:]' '[:lower:]')"
-  local d base
+  local d base b_lc parent
+  local -a hits=()
+  local -a hitdepth=()
   shopt -s nullglob
   for d in "$docs_dir"/*/; do
     [ -d "$d" ] || continue
@@ -417,13 +461,39 @@ resolve_version_dir_from_branch() {
     fi
     b_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
     if [ "$b_lc" = "$suffix_lc" ]; then
-      shopt -u nullglob
-      printf '%s' "${d%/}"
-      return 0
+      hits+=("${d%/}")
+      hitdepth+=("$(_docs_semantic_version_rel_depth "$docs_dir" "${d%/}")")
+    fi
+  done
+  for d in "$docs_dir"/*/*/; do
+    [ -d "$d" ] || continue
+    parent="$(basename "$(dirname "${d%/}")")"
+    if printf '%s' "$parent" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      continue
+    fi
+    base="$(basename "${d%/}")"
+    if ! printf '%s' "$base" | rg -q '^[a-zA-Z]*[vV][0-9]+\.[0-9]+\.[0-9]+-'; then
+      continue
+    fi
+    b_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+    if [ "$b_lc" = "$suffix_lc" ]; then
+      hits+=("${d%/}")
+      hitdepth+=("$(_docs_semantic_version_rel_depth "$docs_dir" "${d%/}")")
     fi
   done
   shopt -u nullglob
-  printf ''
+  if [ "${#hits[@]}" -eq 0 ]; then
+    printf ''
+    return 0
+  fi
+  local best_i=0
+  local i
+  for i in "${!hits[@]}"; do
+    if [ "${hitdepth[$i]}" -gt "${hitdepth[$best_i]}" ]; then
+      best_i="$i"
+    fi
+  done
+  printf '%s' "${hits[$best_i]}"
   return 0
 }
 
