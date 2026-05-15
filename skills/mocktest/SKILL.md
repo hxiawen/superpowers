@@ -21,10 +21,12 @@ Use when **`enforce-acceptance-order` / your plan** indicates `mocktest` is next
 
 ## Startup Gate (Mandatory Preflight)
 
+Resolve the **version root** the same way hooks do: either **two-level** `docs/<product>/<stem>-<topic>/` (e.g. ChatBobi `docs/plugin/pv0.1.13-dom-adapt/`) or **one-level** `docs/<stem>-<topic>/` under `docs/` only. In the paths below, `Vx.y.z` is the **directory basename stem** (e.g. `pv0.1.13`), not literal `V`/`x`/`y`/`z`.
+
 Before running mocktest, validate both files exist:
 
-- `docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-tdd-log.md`
-- `docs/Vx.y.z-<topic>/Vx.y.z-test.md`
+- `<version-root>/Vx.y.z-PRn/Vx.y.z-PRn-tdd-log.md`
+- `<version-root>/Vx.y.z-test.md`
 
 Then validate both files contain detailed test cases:
 

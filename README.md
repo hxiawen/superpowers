@@ -126,10 +126,10 @@ Start a new session in your chosen platform and ask for something that should tr
 
 ## Version/PR/Task Documentation Contract
 
-Superpowers uses version-centric documentation as a hard rule:
+Superpowers uses version-centric documentation as a hard rule. **Path layout** (two-level `docs/<product>/<stem>-<topic>/` vs one-level `docs/<stem>-<topic>/`, legacy `docs/V*`, and the meaning of the `Vx.y.z` placeholder) is defined in root **`CLAUDE.md`** (*File Layout* + *Version/PR Artifacts*).
 
-- Every implementation cycle is bound to one version root: `docs/Vx.y.z-<topic>/` (hooks also resolve `docs/vx.y.z-<topic>/`)
-- `<topic>` naming rule: use exactly two theme keywords joined with `-` (examples: `v0.1.4-scroll-highlight`, `v0.1.5-panel-ui`)
+- Every implementation cycle is bound to one **version root** resolved under `docs/` (hooks: `hooks/acceptance-order-common`).
+- `<topic>` naming: use theme keywords in kebab-case (examples: `pv0.1.13-dom-adapt`, `v0.1.5-panel-ui`); **file basename prefixes must match the version directory basename stem** (`Vx.y.z` in templates = that stem, e.g. `pv0.1.13`).
 - Required version files: `Vx.y.z-design.md`, `Vx.y.z-spec.md`, `Vx.y.z-plan.md`, `Vx.y.z-changelog.md`, `Vx.y.z-decisions.md`, `Vx.y.z-test.md` (three environment statuses only under **`## Acceptance status (hooks)`** — see `version-test-template.md`)
 - Changelog hard rule: all important corrections during design, development, testing, and release must be recorded in the same version's `Vx.y.z-changelog.md`
 - Each PR folder (`Vx.y.z-PRn/`) requires:
