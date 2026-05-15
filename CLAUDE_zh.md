@@ -49,21 +49,30 @@
 
 ## 文件布局（最小运行时约定）
 
+版本目录位于 `docs/` 下。**钩子**（如 `hooks/acceptance-order-common`）同时解析 **两种** 布局：
+
+- **两级（多产品仓库推荐，如 ChatBobi）：** `docs/<产品线>/{prefix}vx.y.z-<topic>/` —— 示例：`docs/plugin/pv0.1.13-dom-adapt`。
+- **一级（兼容旧式）：** 直接在 `docs/` 下的 `docs/{prefix}vx.y.z-<topic>/`，以及仍存在的旧式 `docs/V*` / `docs/v*`。
+
+任一版本根目录内，**六份版本级文件 + `PRn/` 子树** 的命名规则相同：**文件名前缀须与版本目录名一致**（例如目录 `pv0.1.13-dom-adapt` → `pv0.1.13-design.md` … `pv0.1.13-test.md`、`pv0.1.13-PRn/…`）。本文其它处的 **`Vx.y.z` 表示该版本目录 basename 中的语义版本 + 主题 stem**，不是字面量 `V`/`x`/`y`/`z`。
+
 ```text
 docs/
 ├── LESSONS.md              # 演化提案（人类可读摘要；由 evolution-keeper 追加；与 .claude/feedback 配合）
-└── Vx.y.z-<topic>/
-    ├── Vx.y.z-design.md
-    ├── Vx.y.z-spec.md
-    ├── Vx.y.z-plan.md
-    ├── Vx.y.z-changelog.md
-    ├── Vx.y.z-decisions.md
-    ├── Vx.y.z-test.md
-    └── Vx.y.z-PRn/
-        ├── Vx.y.z-PRn-tdd-log.md
-        ├── Vx.y.z-PRn-subagent-summary.md
-        ├── Vx.y.z-PRn-review-report.md
-        └── Vx.y.z-PRn-finalize-log.md
+├── plugin/                 # 产品线示例：plugin | webapp | platform | …
+│   └── pv0.1.13-dom-adapt/ # 如 ChatBobi：docs/plugin/pv0.1.13-dom-adapt
+│       ├── pv0.1.13-design.md
+│       ├── pv0.1.13-spec.md
+│       ├── pv0.1.13-plan.md
+│       ├── pv0.1.13-changelog.md
+│       ├── pv0.1.13-decisions.md
+│       ├── pv0.1.13-test.md
+│       └── pv0.1.13-PRn/
+│           ├── pv0.1.13-PRn-tdd-log.md
+│           ├── pv0.1.13-PRn-subagent-summary.md
+│           ├── pv0.1.13-PRn-review-report.md
+│           └── pv0.1.13-PRn-finalize-log.md
+└── pv0.1.4-scroll-highlight/   # 一级目录示例：仍在 docs/ 下 —— 内部结构同上
 
 .claude/
 └── feedback/
@@ -71,7 +80,7 @@ docs/
     └── topics/*.md
 ```
 
-迁移规则：若仅存在旧版 `Vx.y.z-PRn-code-review.md` 而缺少 `Vx.y.z-PRn-review-report.md`，先重命名，再继续写作。
+迁移规则：若仅存在旧版 `Vx.y.z-PRn-code-review.md` 而缺少 `Vx.y.z-PRn-review-report.md`，先重命名再继续写作（将 `Vx.y.z` 换为实际版本 stem）。
 
 ## Superpowers Runtime Sync 路由
 
@@ -116,11 +125,14 @@ docs/
 
 ### 版本/PR 产物（强制）
 
-- 版本根目录：`docs/{prefix}Vx.y.z-<topic>/`（钩子也接受 `docs/{prefix}vx.y.z-<topic>/`；例如插件 `p` → `pv`，Web `w` → `wv`；仍兼容旧式 `docs/V*` / `docs/v*`）
-- 主题命名示例：`pv0.1.4-scroll-highlight`、`wv0.1.0-homepage`
+- 版本根路径（由钩子强制；见 `hooks/acceptance-order-common`）：
+  - **两级：** `docs/<产品线>/{prefix}vx.y.z-<topic>/` —— 例如 `docs/plugin/pv0.1.13-dom-adapt`（插件 `p`→`pv`，Web `w`→`wv`；前缀字母大小写不敏感）。
+  - **一级：** 仅在 `docs/` 下的 `docs/{prefix}vx.y.z-<topic>/`。
+  - **旧式 glob：** 仍存在的 `docs/V*` / `docs/v*` 亦可被解析。
+- 主题命名示例：`pv0.1.4-scroll-highlight`、`wv0.1.0-homepage`、`pv0.1.13-dom-adapt`
 - **仅平台 / repo 级 bump**（无新产品版本目录）：添加 **`.superpowers/platform-release`**，并按 `docs/superpowers/templates/versioning/platform-version-test-template.md` 维护 **`docs/platform-release-test.md`**；恢复常规产品版本时请删除该 marker。
 - 必备版本级文件：`Vx.y.z-design.md`、`Vx.y.z-spec.md`、`Vx.y.z-plan.md`、`Vx.y.z-changelog.md`、`Vx.y.z-decisions.md`、`Vx.y.z-test.md`（**`## Acceptance status (hooks)`** 等见 `version-test-template.md`）
-- **`Vx.y.z-spec.md` 还须含 `## Superpowers pipeline (hooks)`**：一行 `Full extension acceptance pipeline: Yes` 或 `No`（brainstorming 问用户后写入）。**No** 时 hooks 豁免扩展三测顺序门、Stop 上 manifest 构建号门、`src/package.json` 与产物 manifest 漂移门；**不**影响 Figma Live Design Sync（仍由 plan 是否含 Design Sync PR 决定）。进入 `/writing-plans` 前由 `hooks/spec-gate-precheck` 校验该小节。
+- **`Vx.y.z-spec.md` 还须含 `## Superpowers pipeline (hooks)`**：一行 `Full extension acceptance pipeline: Yes` 或 `No`（brainstorming 问用户后写入）。**No** 时 hooks 豁免扩展三测顺序门、Stop 上 manifest 构建号门、**`package.json` 与扩展 `manifest.json` 漂移门**（具体路径因项目而异；如 ChatBobi 为 `app/plugin/package.json` 与 `app/plugin/.output/chrome-mv3/manifest.json`；见 `hooks/test-acceptance-gate`）；**不**影响 Figma Live Design Sync（仍由 plan 是否含 Design Sync PR 决定）。进入 `/writing-plans` 前由 `hooks/spec-gate-precheck` 校验该小节。
 - 必备 PR 级文件：
   - `Vx.y.z-PRn-tdd-log.md`
   - `Vx.y.z-PRn-subagent-summary.md`
@@ -129,9 +141,10 @@ docs/
 
 ### 审阅产物归属
 
+- 下文 **`Vx.y.z` 为占位符**，表示**版本目录 basename 中的语义版本 + 主题 stem**（例如目录为 `pv0.1.13-dom-adapt` 时，实际文件形如 `pv0.1.13-PR2-review-report.md`）。
 - `Vx.y.z-PRn-review-report.md` 为审阅方产出（规格/代码质量/code-reviewer 等结论）。
 - 实现方自检写在 `Vx.y.z-PRn-subagent-summary.md`，不能当作审阅通过/签字。
-- 迁移规则：若存在旧版 `Vx.y.z-PRn-code-review.md` 而缺少 `Vx.y.z-PRn-review-report.md`，先将其重命名为 `Vx.y.z-PRn-review-report.md` 再继续。
+- 迁移规则：若存在旧版 `Vx.y.z-PRn-code-review.md` 而缺少 `Vx.y.z-PRn-review-report.md`，先将其重命名为 `Vx.y.z-PRn-review-report.md` 再继续（将 `Vx.y.z` 换为实际版本 stem）。
 - 审阅阶段门顺序严格：阶段 1（规格/计划符合性）通过后方可进入阶段 2（代码质量）。
 - 在 Critical/Important 类发现项解决前，不得向下推进。
 
@@ -196,7 +209,7 @@ Superpowers 是主要运行框架。外部框架仅可当作参考。
 ### 缺口证据记录（注入前必须）
 
 在添加任何外部来源规则前，在当前 PR 的审阅产物  
-`docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-review-report.md` 中记录以下区块：
+`docs/<版本根路径>/<stem>-PRn/<stem>-PRn-review-report.md` 中记录以下区块（两级示例：`docs/plugin/pv0.1.13-dom-adapt/pv0.1.13-PR1/pv0.1.13-PR1-review-report.md`；一级示例：`docs/pv0.1.4-scroll-highlight/pv0.1.4-PR1/pv0.1.4-PR1-review-report.md`；`stem` 与版本目录 basename 一致，即文中 `Vx.y.z` 占位符所指）：
 
 ```md
 ## Gap Evidence

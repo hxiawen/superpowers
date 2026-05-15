@@ -49,21 +49,30 @@ In each development session, advance and close work as follows:
 
 ## File Layout (minimal runtime contract)
 
+Version directories live under `docs/`. **Hooks** (`hooks/acceptance-order-common`, etc.) resolve **both** layouts:
+
+- **Two-level (preferred for multi-product repos, e.g. ChatBobi):** `docs/<product-line>/{prefix}vx.y.z-<topic>/` — example: `docs/plugin/pv0.1.13-dom-adapt`.
+- **One-level (legacy):** `docs/{prefix}vx.y.z-<topic>/` directly under `docs/`, plus historical `docs/V*` / `docs/v*` where still present.
+
+Inside any version root, the **six version files + `PRn/` subtree** follow the same naming rule: the **file basename prefix must match the version folder name** (e.g. folder `pv0.1.13-dom-adapt` → `pv0.1.13-design.md`, …, `pv0.1.13-test.md`, `pv0.1.13-PRn/…`). The placeholder `Vx.y.z` elsewhere in this doc means that stem (semantic version + topic), not the literal letters `V`/`x`/`y`/`z`.
+
 ```text
 docs/
 ├── LESSONS.md              # Evolution proposals (human-readable summary; appended by evolution-keeper; alongside .claude/feedback)
-└── Vx.y.z-<topic>/
-    ├── Vx.y.z-design.md
-    ├── Vx.y.z-spec.md
-    ├── Vx.y.z-plan.md
-    ├── Vx.y.z-changelog.md
-    ├── Vx.y.z-decisions.md
-    ├── Vx.y.z-test.md
-    └── Vx.y.z-PRn/
-        ├── Vx.y.z-PRn-tdd-log.md
-        ├── Vx.y.z-PRn-subagent-summary.md
-        ├── Vx.y.z-PRn-review-report.md
-        └── Vx.y.z-PRn-finalize-log.md
+├── plugin/                 # example product line: plugin | webapp | platform | …
+│   └── pv0.1.13-dom-adapt/ # e.g. ChatBobi: docs/plugin/pv0.1.13-dom-adapt
+│       ├── pv0.1.13-design.md
+│       ├── pv0.1.13-spec.md
+│       ├── pv0.1.13-plan.md
+│       ├── pv0.1.13-changelog.md
+│       ├── pv0.1.13-decisions.md
+│       ├── pv0.1.13-test.md
+│       └── pv0.1.13-PRn/
+│           ├── pv0.1.13-PRn-tdd-log.md
+│           ├── pv0.1.13-PRn-subagent-summary.md
+│           ├── pv0.1.13-PRn-review-report.md
+│           └── pv0.1.13-PRn-finalize-log.md
+└── pv0.1.4-scroll-highlight/   # legacy one-level example under docs/ — same inner pattern
 
 .claude/
 └── feedback/
@@ -71,7 +80,7 @@ docs/
     └── topics/*.md
 ```
 
-Migration rule: if only the legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` is missing, rename first, then continue writing.
+Migration rule: if only the legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` is missing, rename first, then continue writing (use the real version stem in place of `Vx.y.z`).
 
 ## Superpowers Runtime Sync Routing
 
@@ -116,11 +125,14 @@ Canonical labels: `Brainstorm -> Spec -> Plan -> TDD -> Subagent Development -> 
 
 ### Version/PR Artifacts (Mandatory)
 
-- Version root: `docs/{prefix}Vx.y.z-<topic>/` (hooks also accept `docs/{prefix}vx.y.z-<topic>/`; e.g. plugin `p` → `pv`, webapp `w` → `wv`; legacy `docs/V*` / `docs/v*` still resolve)
-- Topic naming examples: `pv0.1.4-scroll-highlight`, `wv0.1.0-homepage`
+- Version root (hooks-enforced; see `hooks/acceptance-order-common`):
+  - **Two-level:** `docs/<product-line>/{prefix}vx.y.z-<topic>/` — e.g. `docs/plugin/pv0.1.13-dom-adapt` (`p` → `pv`, `w` → `wv` for webapp; prefix letter case-insensitive).
+  - **One-level:** `docs/{prefix}vx.y.z-<topic>/` under `docs/` only.
+  - **Legacy globs:** `docs/V*` / `docs/v*` still resolve when present.
+- Topic naming examples: `pv0.1.4-scroll-highlight`, `wv0.1.0-homepage`, `pv0.1.13-dom-adapt`
 - **Platform / repo-only bump** (no new product version folder): add **`.superpowers/platform-release`** and maintain **`docs/platform-release-test.md`** using `docs/superpowers/templates/versioning/platform-version-test-template.md`; remove the marker when resuming normal product versions.
 - Required version files: `Vx.y.z-design.md`, `Vx.y.z-spec.md`, `Vx.y.z-plan.md`, `Vx.y.z-changelog.md`, `Vx.y.z-decisions.md`, `Vx.y.z-test.md` (see `version-test-template.md` for **`## Acceptance status (hooks)`**)
-- **`Vx.y.z-spec.md` must also include `## Superpowers pipeline (hooks)`** with one line `Full extension acceptance pipeline: Yes` or `No` (user answers during brainstorming). **No** waives extension test-order enforcement on submit, manifest build reporting at Stop, and `src/package.json` vs shipped manifest drift checks; **Figma Live Design Sync** still follows whether the plan includes a Design Sync PR. `hooks/spec-gate-precheck` requires this section before `/writing-plans`.
+- **`Vx.y.z-spec.md` must also include `## Superpowers pipeline (hooks)`** with one line `Full extension acceptance pipeline: Yes` or `No` (user answers during brainstorming). **No** waives extension test-order enforcement on submit, manifest build reporting at Stop, and `package.json` vs shipped extension `manifest.json` drift checks (paths are project-specific; e.g. ChatBobi `app/plugin/package.json` vs `app/plugin/.output/chrome-mv3/manifest.json`; see `hooks/test-acceptance-gate`). **Figma Live Design Sync** still follows whether the plan includes a Design Sync PR. `hooks/spec-gate-precheck` requires this section before `/writing-plans`.
 - Required PR files:
   - `Vx.y.z-PRn-tdd-log.md`
   - `Vx.y.z-PRn-subagent-summary.md`
@@ -129,9 +141,10 @@ Canonical labels: `Brainstorm -> Spec -> Plan -> TDD -> Subagent Development -> 
 
 ### Review Artifact Ownership
 
+- **`Vx.y.z` in PR filenames is a placeholder** for the **version folder basename stem** (e.g. `pv0.1.13` when the version directory is `pv0.1.13-dom-adapt`). Real files look like `pv0.1.13-PR2-review-report.md`.
 - `Vx.y.z-PRn-review-report.md` is reviewer-owned output (spec/code-quality/code-reviewer conclusions).
 - Implementer self-review belongs in `Vx.y.z-PRn-subagent-summary.md` and cannot be used as review approval/sign-off.
-- Migration rule: if legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` is missing, rename the legacy file to `Vx.y.z-PRn-review-report.md` before continuing.
+- Migration rule: if legacy `Vx.y.z-PRn-code-review.md` exists and `Vx.y.z-PRn-review-report.md` is missing, rename the legacy file to `Vx.y.z-PRn-review-report.md` before continuing (using the real stem in place of `Vx.y.z`).
 - Review stage gate order is strict: Stage 1 (Spec/Plan Compliance) must pass before Stage 2 (Code Quality).
 - Downstream progression is blocked until Critical/Important findings are resolved.
 
@@ -195,8 +208,8 @@ If any precondition is missing, do not inject.
 
 ### Gap Evidence Record (Required Before Injection)
 
-Before adding any externally sourced rule, record this block in the active PR review artifact
-`docs/Vx.y.z-<topic>/Vx.y.z-PRn/Vx.y.z-PRn-review-report.md`:
+Before adding any externally sourced rule, record this block in the active PR review artifact at  
+`docs/<path-to-version-root>/<stem>-PRn/<stem>-PRn-review-report.md` (e.g. two-level `docs/plugin/pv0.1.13-dom-adapt/pv0.1.13-PR1/pv0.1.13-PR1-review-report.md`, or one-level `docs/pv0.1.4-scroll-highlight/pv0.1.4-PR1/pv0.1.4-PR1-review-report.md`; `stem` matches the version directory basename, same as the `Vx.y.z` placeholder elsewhere in this doc):
 
 ```md
 ## Gap Evidence
