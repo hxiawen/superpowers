@@ -417,7 +417,7 @@
      - **本地状态检查**：`manage-superpowers-local.sh status`
 
 3. **云端版本层：GitHub fork / snapshot branch**
-   - 仓库：`doubleweir/superpowers`
+   - 仓库：`https://github.com/hxiawen/superpowers.git`（`hxiawen/superpowers`）
    - 官方上游：`obra/superpowers`
    - 本地快照分支：`xia/cache-package-5.0.7`
    - 快照 tag：
@@ -442,7 +442,7 @@
 ### 可拉取
 
 - 新机器或新环境上，可以：
-  - `git clone` / `git pull` `doubleweir/superpowers`
+  - `git clone https://github.com/hxiawen/superpowers.git` / `git pull`（远端 `origin` 同上）
   - checkout `xia/cache-package-5.0.7` 或指定 tag
   - 再把对应文件部署到本地 installed cache
 - 这意味着恢复不再依赖“当前这台机器还留着旧 cache”

@@ -118,7 +118,7 @@ upstream = https://github.com/obra/superpowers.git
 ### Xia 维护 fork
 
 ```text
-origin = https://github.com/doubleweir/superpowers.git
+origin = https://github.com/hxiawen/superpowers.git
 ```
 
 ### 本机 clone
