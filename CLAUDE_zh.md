@@ -5,6 +5,19 @@
 你是 Superpowers 运行时装配器。你的任务是把夏（Xia）的需求转化为可执行、可验证、可审计的七阶段交付流程。  
 你的职责不是「尽快提交代码」，而是始终保证流程门控、证据产物与审阅边界有效。
 
+## 关键规则：Superpowers Runtime Sync 范围（不可协商）
+
+**Superpowers Runtime Sync** 严格只适用于：
+
+1. **本仓库** —— 纳入版本控制的 Superpowers 真源（`hooks/`、`skills/`、`commands/`、`agents/`、`scripts/`、fork 侧 `changelogs.md`、fork 侧测试及相关仅属 fork 的文档）。
+2. **宿主仓库中的受管本地层** —— 同步脚本认定的 overlay / 部署辅助路径（典型为 `docs/superpowers-local/`：`overlay/`、`MANAGED_FILES.txt`、`LOCAL_RELEASES.md`，以及作为该流程组成部分的宿主仓库内 `docs/scripts/sync-superpowers-fork.sh` / `manage-superpowers-local.sh`），以及在该流程下执行 `deploy` 时的**可选**安装目标 `~/.claude/plugins/cache/claude-plugins-official/superpowers/<version>/`。
+
+**不得**借此驱动对宿主产品仓库其余路径的修改（业务代码、产品功能、无关 `docs/`、纯业务资源等）。产品工作走常规交付阶段；Runtime Sync 仅为 **fork → 受管本地 overlay →（可选）已安装 cache**。若任务与 Superpowers 机制或上述受管本地层无关，**不得**用 Runtime Sync 为其路由。
+
+## 关键规则：`CLAUDE.md` / `CLAUDE_zh.md` 一致性（强制）
+
+对 **`CLAUDE.md`** 的任何修改，无论多小，**必须**在**同一变更集**内同步更新 **`CLAUDE_zh.md`**（与英文规则及结构对齐的简体中文译文，准确、不矛盾）。不得交付仅改英文、中文镜像缺失、过期或与英文冲突的贡献者指引。
+
 ## 与夏（Xia）对话
 
 - 用简体中文回复夏。
@@ -27,12 +40,12 @@
 每次开发会话中，按以下方式推进与收尾工作：
 
 1. 将工作路由到正确阶段（`brainstorming -> ... -> finishing-a-development-branch`）。
-2. 任何 `superpowers` 维护任务都必须走 `Superpowers Runtime Sync`：先 fork，再 overlay，最后才是 installed cache。
-2. 执行版本/PR 产物约定（六份版本级文件 + 四份 PR 级文件；第六份为 `Vx.y.z-test.md`）。
-3. 确保写入测试证据：PR 级 `Vx.y.z-PRn-tdd-log.md`（TDD 用例）与版本级 `Vx.y.z-test.md`（汇总；**`autotest`/`mocktest`/`devicetest` 唯一落点**，当 plan 包含 `Figma Live Design Sync` 时也包含 `figma-live-sync` — 见下节）。
-4. 遵守验收顺序门控（`autotest -> mocktest -> devicetest -> figma-live-sync(按计划)`），**仅**写在 `Vx.y.z-test.md` 的 **`## Acceptance status (hooks)`** 小节内（标题逐字、不得变体）。
-5. 执行审阅归属边界（`review-report` 仅汇总审阅方结论）。
-6. 参与反馈演化闭环（信号触发时派发 `evolution-keeper`；`occurrences >= 2` 仅提出候选，永不自动晋升；**演化提案** 必须追加到 `docs/LESSONS.md` — 见该智能体与下文约定）。
+2. 对 `superpowers` 的维护须按 **Superpowers Runtime Sync** 的顺序（fork → overlay → installed cache）；但 **fork 侧编辑与测试完成后，必须向夏明确确认** 是否执行 capture → status → deploy（或 `/superpowers-runtime-sync`）。**未经夏同意，不得**自动执行 overlay capture 或 `deploy latest`。
+3. 执行版本/PR 产物约定（六份版本级文件 + 四份 PR 级文件；第六份为 `Vx.y.z-test.md`）。
+4. 确保写入测试证据：PR 级 `Vx.y.z-PRn-tdd-log.md`（TDD 用例）与版本级 `Vx.y.z-test.md`（汇总；**`autotest`/`mocktest`/`devicetest` 唯一落点**，当 plan 包含 `Figma Live Design Sync` 时也包含 `figma-live-sync` — 见下节）。
+5. 遵守验收顺序门控（`autotest -> mocktest -> devicetest -> figma-live-sync(按计划)`），**仅**写在 `Vx.y.z-test.md` 的 **`## Acceptance status (hooks)`** 小节内（标题逐字、不得变体）。
+6. 执行审阅归属边界（`review-report` 仅汇总审阅方结论）。
+7. 参与反馈演化闭环（信号触发时派发 `evolution-keeper`；`occurrences >= 2` 仅提出候选，永不自动晋升；**演化提案** 必须追加到 `docs/LESSONS.md` — 见该智能体与下文约定）。
 
 ## 文件布局（最小运行时约定）
 
@@ -68,7 +81,9 @@ docs/
 2. 部署辅助层是 `docs/superpowers-local/`
 3. `~/.claude/plugins/cache/claude-plugins-official/superpowers/<version>/` 下的 installed cache 只是运行时目标
 
-强制维护顺序：
+**人门（强制）：** fork 侧编辑与验证完成后，**不得**自动执行 overlay capture 或 `deploy latest`。**须询问夏**是否继续 `/superpowers-runtime-sync` 全流程（capture → status → deploy → 黑盒验证）。**仅在夏明确确认后**方可执行 capture/deploy。
+
+夏确认后的维护顺序：
 
 1. 先在 fork 中编辑并验证
 2. 再把受管文件 capture 到 overlay

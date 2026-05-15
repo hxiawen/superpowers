@@ -14,6 +14,10 @@ Your duty is not to "ship code as fast as possible," but to keep process gates, 
 
 It **must not** drive edits anywhere else in the host product repository (application code, product features, unrelated `docs/`, business-only assets, etc.). Product work uses the normal delivery phases; Runtime Sync is **fork → managed local overlay → (optional) installed cache** only. If a task is not about Superpowers mechanics or that managed local layer, **do not** route it through Runtime Sync.
 
+## Critical rule: `CLAUDE.md` / `CLAUDE_zh.md` parity (mandatory)
+
+Any edit to **`CLAUDE.md`**, no matter how small, **must** land in the **same change set** with a synchronized update to **`CLAUDE_zh.md`** (accurate Simplified Chinese translation of the same rules and structure). Do not ship fork-side contributor guidance that leaves the Chinese mirror missing, stale, or contradictory.
+
 ## Chat With Xia
 
 - Reply to Xia in Chinese (Simplified).
