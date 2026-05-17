@@ -37,6 +37,18 @@
     ],
     "stop": [
       {
+        "command": "./hooks/platform-version-bump-guard"
+      },
+      {
+        "command": "./hooks/cws-artifact-sync-guard"
+      },
+      {
+        "command": "./hooks/hotfix-parallel-sync-guard"
+      },
+      {
+        "command": "./hooks/next-minor-behind-main-guard"
+      },
+      {
         "command": "./hooks/test-acceptance-gate"
       }
     ]

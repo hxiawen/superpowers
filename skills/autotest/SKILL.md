@@ -69,6 +69,7 @@ Do not add `autotest: …` to the PR `tdd-log` for hook purposes; that file is f
 - scope
 - command(s) executed
 - **build version (MUST read from `app/plugin/.output/chrome-mv3/manifest.json` after `npm run build` completes — `buildNumber` auto-increments each build; reading before build reports a stale version)**
+- **build path (No.19):** state **`main`** vs **worktree**; worktree build is for CI/automation only until `.output/` is committed on `main`.
 - **bundle size (from build output `Σ Total size` line — required for Quality Gate monitoring; flag any single-PR increase > 5KB vs a prior baseline)**
 - pass/fail summary
 - failed cases with evidence

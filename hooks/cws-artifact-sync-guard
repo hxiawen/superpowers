@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Stop: on main, app/plugin source must be included in latest git commit touching .output/ (No.19).
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/acceptance-order-common
+. "$HOOK_DIR/acceptance-order-common"
+
+block_and_exit() {
+  emit_block_json_with_meta \
+    "$1" \
+    "false" \
+    "agent" \
+    "agent_remediation_required" \
+    "agent_fix_and_retry_stop_gate"
+  exit 2
+}
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$PROJECT_DIR" ]; then
+  exit 0
+fi
+
+if superpowers_platform_release_active "$PROJECT_DIR"; then
+  exit 0
+fi
+
+if superpowers_extension_pipeline_waived "$PROJECT_DIR"; then
+  exit 0
+fi
+
+if ! git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  exit 0
+fi
+
+if [ ! -d "$PROJECT_DIR/app/plugin" ]; then
+  exit 0
+fi
+
+CURRENT_BRANCH="$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null || true)"
+if ! _is_integration_branch "$CURRENT_BRANCH"; then
+  exit 0
+fi
+
+if ! plugin_output_covers_source_tip "$PROJECT_DIR"; then
+  SRC="$(plugin_source_latest_commit "$PROJECT_DIR")"
+  OUT="$(plugin_output_latest_commit "$PROJECT_DIR")"
+  block_and_exit "app/plugin 源码（${SRC:0:7}）新于 git 已提交的 .output/（${OUT:0:7}）。在 main 上执行：cd app/plugin && npm run build → git add app/plugin/.output → commit，再打 tag 或上传 CWS（见 finishing Step 2.55b / No.19）。禁止从 worktree 未 commit 的包发 CWS。"
+fi
+
+if ! plugin_manifest_base_matches_wxt "$PROJECT_DIR"; then
+  block_and_exit "app/plugin/.output/chrome-mv3/manifest.json 的 version 与 wxt.config.ts BASE_VERSION 不一致。请 rebuild 并 commit .output/。"
+fi
+
+exit 0

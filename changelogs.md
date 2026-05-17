@@ -8,6 +8,9 @@
 
 | 这版在解决什么 | 点入正文 |
 | --- | --- |
+| **CWS 发布链（No.19）**：main 上 rebuild+commit `.output` 再 tag/CWS；`cws-artifact-sync-guard`；finishing Step 2.55b | [→ 打开](#sec-20260517-cws-artifact-sync) |
+| **已发布子产品 hotfix（R1/R2/H7）**：与常规 PR 同形；brainstorming 三选一；`hotfix-flow` 薄编排；并行下一版本 Stop 双 hook | [→ 打开](#sec-20260517-published-hotfix-flow) |
+| **ChatGPT 真机 Chrome 验证**：独立调试 Profile + DevTools MCP workflow + `launch-chatbobi-chrome.sh` + debug bridge 诊断命令 | [→ 打开](#sec-20260515-chatgpt-chrome-verify) |
 | 本 **changelog** 与 **发版 tag** 怎么写、新条目往哪插 | [→ 打开](#sec-how-to-maint) |
 | **ChatBobi 仓库**：Runtime Sync **首次落盘**（`MANAGED_FILES.txt` / `capture`→overlay / `deploy latest`）、`.gitignore` 放行清单；根 `changelogs.md` 写明 **「完整 Runtime Sync」** 默认口径（含落盘 ChatBobi，非仅 fork 发版） | [→ 打开](#sec-20260515-chatbobi-runtime-sync) |
 | **2026-05-15 发版**：工作区归并 — `test-acceptance-gate` 平台验收路径、evolution closure 脚本、`using-superpowers` 增补、fork `LESSONS.md`、Clockworkman 内稿、模板与回归测试 | [→ 打开](#sec-20260515-release-wip) |
@@ -44,6 +47,90 @@
 | **evolution-keeper** 角色**落地** | [→ 打开](#sec-20260420-keeper) |
 | 测试**证据**、**门禁**试点、用例可**机器**判 | [→ 打开](#sec-20260420-testgate) |
 | 起版 **5.0.7**：**版本/PR/Task 文档** + **七步** **硬**约束 | [→ 打开](#sec-20260420-507) |
+
+<a id="sec-20260517-cws-artifact-sync"></a>
+## CWS 发布必须与 git `.output` 一致（No.19 / project2feedback）
+
+> **发版**：待下一枚 `sp-v5.0.7-xia-*` tag；与 hotfix § 同批 sync。
+
+### 结论
+
+常规版本与 hotfix **共用**发布纪律：禁止 worktree 临时 build 直传 CWS。在 **`main`** 上 `npm run build` → **commit** `app/plugin/.output/` → 再打 `plugin/pv*` / `*-hf*` tag → CWS 只从该 commit 的 `.output/` 打包。
+
+### 模块
+
+| 路径 | 说明 |
+|------|------|
+| `skills/finishing-a-development-branch` Step **2.55b** | rebuild + commit 产物（S1/S2） |
+| `skills/devicetest`, `mocktest`, `autotest` | 报告 **build path**（main vs worktree） |
+| `hooks/cws-artifact-sync-guard` | Stop：main 上源码新于 `.output` commit 则 block（S3） |
+| `hooks/acceptance-order-common` | `plugin_output_covers_source_tip` 等辅助函数 |
+
+### 验证
+
+- `tests/claude-code/test-cws-artifact-sync.sh`
+- 回归：仅改 `app/plugin` 源码不 commit `.output` → main Stop block
+
+<a id="sec-20260517-published-hotfix-flow"></a>
+## 已发布子产品 hotfix 流程（No.18 / project2feedback）
+
+> **发版**：待下一枚 `sp-v5.0.7-xia-*` tag；ChatBobi 侧 `docs/scripts/sync-superpowers-fork.sh full-sync latest`。
+
+### 结论
+
+当 **已发布** plugin/webapp 版本（如 `pv0.1.14`）必须立即修复且不能等下个小版本时：**流程与制品与常规版本相同**（完整 brainstorming → writing-plans → 版本集 + `PRn` + 七步验收）。**`hotfix-flow`** 仅负责 Git tag 基线、CWS/`plugin/pv*-hf*` 发布与并行下一版本合入说明。分支 `feat/pv0.1.14-hotfix-<topic>` 从 **`plugin/pv0.1.14`** tag 起飞；文档根 `docs/plugin/pv0.1.14-hotfix-<topic>/` + `*-PRn/`；CWS 仍 `0.1.14.N`，靠 **`plugin/pv0.1.14-hf{n}`** tag 区分。
+
+**2026-05-17 修订（夏老板 R1/R2/H7）**：回退「lite + 无 PRn」实验；brainstorming Step 2 三选一（含「线上已发布」+ Bug/紧急功能第二问）；新增 Stop hook `hotfix-parallel-sync-guard`、`next-minor-behind-main-guard`。
+
+**2026-05-17 修补（自检 H7）**：hotfix Stop 仅校验并行 **plan**（`strategy` + `target_branch`），**不要求**开发期 `evidence`；真实合入由 `next-minor-behind-main-guard` 用 git 强制；`list_in_flight` 过滤已 merge 分支与 semver ≤ hotfix 基线；hotfix 开工前校验 `plugin/pv*` 基线 tag；waiver 须含 `reason:` 行。
+
+### 模块
+
+| 路径 | 说明 |
+|------|------|
+| `skills/hotfix-flow/SKILL.md` | 薄 Git/发布/并行合入清单（不替代 brainstorming/writing-plans） |
+| `skills/brainstorming/SKILL.md` | Step 2 三选一 + Published 第二问 |
+| `skills/writing-plans/SKILL.md` | hotfix 同 PR 形状 + finalize-log `## Parallel next minor sync` |
+| `skills/using-superpowers`, `finishing-a-development-branch` | 入口说明 + Step 2.65 并行合入 |
+| `hooks/acceptance-order-common` | `is_hotfix_*`, `list_in_flight_pv_feature_branches`, `parallel_sync_section_valid` |
+| `hooks/hotfix-parallel-sync-guard` | hotfix Stop：有进行中 `feat/pv*` 时要求 finalize-log 并行节 |
+| `hooks/next-minor-behind-main-guard` | 下一版本 Stop：`HEAD..main` 在 `app/plugin/` 非空则 block |
+| `hooks/test-acceptance-gate`, `enforce-acceptance-order` | **已恢复**常规 PR+版本 gate（无 hotfix 无 PRn 旁路） |
+| `hooks/hooks.json`, `hooks/hooks-cursor.json` | 注册上述 Stop hook |
+
+### 验证
+
+- `tests/claude-code/test-active-pr-resolution.sh` 用例 10（hotfix 分支绑定目录）
+- `tests/claude-code/test-hotfix-parallel-sync.sh`（H7 辅助函数 + Stop guard）
+- ChatBobi 宿主：`.superpowers/issues.md` 工单 + `full-sync latest` 后 overlay 含本变更
+
+<a id="sec-20260515-chatgpt-chrome-verify"></a>
+## ChatGPT 真机 Chrome 验证（No.12 / project2feedback）
+
+> **发版**：待下一枚 `sp-v5.0.7-xia-*` tag；本机 overlay deploy 见 ChatBobi `docs/superpowers-local/LOCAL_RELEASES.md`。
+
+### 结论
+
+新增 **`chatgpt-chrome-verify`** skill 与 **`/chatgpt-chrome-verify`** command，让 agent 在 ChatBobi + ChatGPT 场景下用**可视化真实 Chrome**（非无头）完成 Console 读取、诊断命令、滚动观察与结构化汇报；主路径为 **Chrome DevTools MCP** + 独立 `--user-data-dir` profile。提供 **`scripts/launch-chatbobi-chrome.sh`** 启动专用 Chrome 并加载 `app/plugin/.output/chrome-mv3`。ChatBobi 侧最小改动：`shared/debug/debug-bridge.ts`（`ChatBobiDebug` postMessage → `[ChatBobi][DEBUG]` 日志）、`docs/scripts/launch-chatbobi-chrome.sh` 包装器、`.claude/commands/chatgpt-chrome-verify.md`。
+
+### 模块
+
+| 路径 | 说明 |
+|------|------|
+| `skills/chatgpt-chrome-verify/SKILL.md` | Agent workflow、安全边界、汇报字段 |
+| `commands/chatgpt-chrome-verify.md` | 分步命令（构建、MCP、诊断、汇报） |
+| `scripts/launch-chatbobi-chrome.sh` | 独立 profile + debug port + 扩展加载 |
+
+### 验证
+
+- `docs/scripts/launch-chatbobi-chrome.sh --check` 解析 extension 与 manifest version
+- ChatGPT 页：`localStorage.setItem('chatbobi:debug','1')` 后 postMessage 诊断类型，Console 出现 `[ChatBobi][DEBUG]`
+- `claude mcp list` 显示 `chrome-devtools` 且会话可调用其工具
+- `scripts/install-chatgpt-chrome-verify-global.sh` 写入 `~/.cursor/skills/` 与 `~/.claude/skills/`（Cursor + Claude Code 全局）
+
+### 安全
+
+- 不复用日常 Chrome profile；不自动发送 ChatGPT 消息（除非用户明确确认）
 
 <a id="sec-how-to-maint"></a>
 ## 本文件怎么维护（changelog 与发版）

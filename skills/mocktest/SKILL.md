@@ -51,6 +51,7 @@ Optional human notes in `Vx.y.z-test.md` outside that section (e.g. PR coverage 
 - command source path
 - mocked scenario set
 - **build version (MUST read from `app/plugin/.output/chrome-mv3/manifest.json` after `npm run build` completes — `buildNumber` auto-increments each build; reading before build reports a stale version)**
+- **build path (No.19):** state **`main`** vs **worktree** for the build used in this run; CWS must use **`main`** committed `.output/` only (finishing Step 2.55b).
 - **bundle size (from build output `Σ Total size` line — required for Quality Gate monitoring; flag any single-PR increase > 5KB vs a prior baseline)**
 - checks executed
 - pass/fail summary

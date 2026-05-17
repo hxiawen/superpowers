@@ -89,6 +89,61 @@ Version changelog requirement before Step 3:
 
 If finalize log is missing, create/update it first. Do not continue to Step 3.
 
+### Step 2.55: Platform VERSION bump gate (Mandatory)
+
+When this branch edits **sub-product semver docs** roots (examples: `docs/plugin/pv*-…/`, `docs/webapp/wv*-…/`, or top-level `docs/{prefix}v*-…/` that is **not** only material under `docs/platform/`), the repo **`VERSION`** at the workspace root **must change** relative to `main`/`master` merge-base—in the branch commits **or** unstaged/index changes—along with tagging `chatbobi/v*` per project rules.
+
+- **Structural check:** **`hooks/platform-version-bump-guard`** runs at Stop **before** other Stop gates complete; ending the session blocked until `VERSION` is updated.
+- **Waiver:** if the work is intentionally **repo-only / platform-release** handling without those sub-product roots, maintain **`.superpowers/platform-release`** (see versioning docs / CLAUDE overlay)—the guard exits without requiring `VERSION` in that marker mode.
+
+Skip this step mentally only after confirming the guard passes or waiver applies; do not offer merge/PR options first.
+
+### Step 2.55b: Rebuild and commit extension artifacts (CWS / sub-product tag — No.19)
+
+**Applies to:** any **store/CWS publish** or **`plugin/pv*` / `webapp/wv*` / `*-hf*` tag** on an extension sub-product (regular version **and** hotfix — not hotfix-only).
+
+**Problem this prevents:** worktree or feature-branch builds uploaded to CWS without committing `app/plugin/.output/` to `main` → tests PASS but production bundle lacks merged source (see project2feedback No.19).
+
+**On `main` after merge (before tag or CWS upload):**
+
+1. `cd app/plugin && npm run build` (or project-documented build command)
+2. `git add app/plugin/.output/` (and `app/webapp/` build dirs if applicable)
+3. `git commit` — message notes version stem + rebuild for publish
+4. **CWS upload MUST use** the committed tree at `app/plugin/.output/chrome-mv3/` on **`main`** — never a worktree-only build
+5. Only **then** run Step 2.6 sub-product tags (`plugin/pv*`, `*-hf*`)
+
+Stop hook **`cws-artifact-sync-guard`** blocks when `app/plugin/` source is ahead of the latest git commit touching `.output/` (S3).
+
+**Devicetest/mocktest/autotetest:** report build path (`main` vs worktree) in test summary; worktree PASS does not satisfy publish readiness.
+
+### Step 2.6: Sub-product release tags (publish path)
+
+When the human confirms **store/CWS publish** for a sub-product version:
+
+| Release type | Tag after merge to `main` |
+|--------------|---------------------------|
+| Regular plugin | `plugin/pv{x.y.z}` (e.g. `plugin/pv0.1.14`) |
+| Regular webapp | `webapp/wv{x.y.z}` |
+| Plugin hotfix | `plugin/pv{x.y.z}-hf{n}` (`hf1`, `hf2`, …) |
+
+- **Hotfix branches** MUST be created from `plugin/pv{x.y.z}` (or prior `hf{n-1}`), not from `main` HEAD when the next minor version is in flight on another branch.
+- Push tags with `git push origin <tag>` after human confirms publish.
+- Record tag name in version changelog and host `issues.md` if applicable.
+
+### Step 2.65: Parallel next-minor sync (hotfix branches)
+
+When the branch is `feat/{prefix}v*-hotfix-*` and any **in-flight next-minor** `feat/pv*` branch exists (e.g. `feat/pv0.1.15-*` while fixing `pv0.1.14`), the active PR `*-finalize-log.md` MUST include:
+
+```markdown
+## Parallel next minor sync
+
+- strategy: merge_main | cherry_pick | N/A
+- target_branch: feat/pv0.1.15-<topic>
+- evidence: <commit hash after merge/rebase — fill after hotfix is on main>
+```
+
+`N/A` only when no next-minor feature branch exists. On the **hotfix** branch, Stop hook `hotfix-parallel-sync-guard` requires **plan only** (`strategy` + `target_branch`) while next-minor work is in flight — not `evidence` (that lands after hotfix merges). On the **next-minor** branch, `next-minor-behind-main-guard` blocks when integration (`main`/`master`) has sub-product commits not yet merged.
+
 ### Step 2.75: Conditional Release Privacy Audit Gate (Publish Path Only)
 
 Run this step only when the human partner explicitly wants to publish/deploy/package artifacts for end users now.
@@ -288,6 +343,7 @@ Branch closure complete:
 - Delete remote branch + prune for Options 1 & 4
 - Report final state after cleanup (Step 5)
 - Require `*-finalize-log.md` before completion options
+- Respect **`hooks/platform-version-bump-guard`**: bump root `VERSION` when sub-product semver docs change unless `.superpowers/platform-release` waiver applies
 
 ## Integration
 

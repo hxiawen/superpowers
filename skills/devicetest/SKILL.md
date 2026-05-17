@@ -56,6 +56,7 @@ Do not use PR `tdd-log` for these hook-visible status lines.
 
 - command source path
 - **build version (MUST read from `app/plugin/.output/chrome-mv3/manifest.json` after `npm run build` completes — `buildNumber` auto-increments each build; reading before build reports a stale version)**
+- **build path (No.19):** state whether the reported manifest came from **`main`** (committed `.output/`) or a **worktree/feature branch**. Worktree PASS does **not** authorize CWS upload — see **finishing-a-development-branch** Step 2.55b.
 - **bundle size (from build output `Σ Total size` line — required for Quality Gate monitoring; flag any single-PR increase > 5KB vs a prior baseline)**
 - device matrix
 - executed checks
